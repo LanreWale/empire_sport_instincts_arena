@@ -1,0 +1,439 @@
+/* EMPIRE SPORT INSTINCTS ARENA - Premium Dashboard Styles */
+
+:root {
+    --gold-primary: #D4AF37;
+    --gold-bright: #FFD700;
+    --gold-dark: #B8860B;
+    --gold-gradient: linear-gradient(135deg, #D4AF37 0%, #FFD700 50%, #B8860B 100%);
+    --silver: #C0C0C0;
+    --dark-bg: #0a0a0a;
+    --dark-bg-secondary: #1a1a1a;
+    --card-bg: #1E1E1E;
+    --card-bg-hover: #252525;
+    --text-primary: #e0e0e0;
+    --text-secondary: #888888;
+    --positive: #00FF00;
+    --negative: #FF4444;
+    --warning: #FFD700;
+    --border-gold: 2px solid #D4AF37;
+    --shadow-gold: 0 0 15px rgba(212, 175, 55, 0.5);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0d0d0d 100%);
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+/* Header */
+.header {
+    background: linear-gradient(180deg, #0f0f0f 0%, #1a1a2e 100%);
+    padding: 1.5rem;
+    text-align: center;
+    border-bottom: var(--border-gold);
+    position: relative;
+}
+
+.header::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, #D4AF37 50%, transparent 100%);
+}
+
+.header img {
+    margin-bottom: 0.5rem;
+    filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.3));
+}
+
+.header h1 {
+    font-size: 2.5rem;
+    background: var(--gold-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    margin-bottom: 0.3rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-weight: 800;
+}
+
+.header p {
+    color: var(--silver);
+    font-size: 1.1rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-weight: 300;
+}
+
+/* Navigation */
+.nav {
+    background: linear-gradient(180deg, #0f0f0f 0%, #1a1a2e 100%);
+    padding: 1rem;
+    text-align: center;
+    border-bottom: 1px solid #333;
+}
+
+.nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 0.5rem 1.5rem;
+    margin: 0 0.5rem;
+    border-radius: 8px;
+    transition: all 0.3s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.nav a:hover {
+    background: #333;
+    color: var(--gold-primary);
+    box-shadow: var(--shadow-gold);
+}
+
+.nav a.active {
+    background: var(--gold-gradient);
+    color: #000;
+    font-weight: 700;
+    box-shadow: var(--shadow-gold);
+}
+
+/* Container */
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Sections */
+.section {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    border: 1px solid #333;
+    transition: all 0.3s;
+}
+
+.section:hover {
+    border-color: #D4AF37;
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.1);
+}
+
+.section h2 {
+    background: var(--gold-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 0.5rem;
+}
+
+/* Grid layouts */
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.5rem;
+}
+
+.grid-4 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+/* Cards */
+.card {
+    background: #252525;
+    border-radius: 8px;
+    padding: 1.5rem;
+    border: 1px solid #444;
+    transition: all 0.3s;
+}
+
+.card:hover {
+    border-color: #D4AF37;
+    transform: translateY(-3px);
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.2);
+}
+
+.card h3 {
+    background: var(--gold-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+/* Metric cards */
+.metrics-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.metric-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    border: 1px solid #D4AF37;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+}
+
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--gold-gradient);
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-gold);
+    border-color: #FFD700;
+}
+
+.metric-card h3 {
+    color: var(--silver);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    letter-spacing: 1px;
+}
+
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    background: var(--gold-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0.5rem 0;
+}
+
+.metric-change {
+    font-size: 0.9rem;
+    font-weight: bold;
+}
+
+.metric-change.positive {
+    color: var(--positive);
+}
+
+.metric-change.negative {
+    color: var(--negative);
+}
+
+/* Tables */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.data-table th,
+.data-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #333;
+}
+
+.data-table th {
+    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+    background: var(--gold-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+    border-bottom: 2px solid #D4AF37;
+}
+
+.data-table tr:hover {
+    background: #252525;
+}
+
+/* Badges */
+.badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.badge.football {
+    background: #1a5f1a;
+    color: #fff;
+}
+
+.badge.nba {
+    background: #ff6600;
+    color: #fff;
+}
+
+.badge.nfl {
+    background: #8B4513;
+    color: #fff;
+}
+
+.badge.tennis {
+    background: #CCFF00;
+    color: #000;
+}
+
+/* Confidence indicators */
+.confidence {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.confidence.high {
+    background: #1a5f1a;
+    color: #fff;
+}
+
+.confidence.medium {
+    background: #b8860b;
+    color: #fff;
+}
+
+.confidence.low {
+    background: #8b0000;
+    color: #fff;
+}
+
+/* Status indicators */
+.status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.status.active {
+    background: #1a5f1a;
+    color: #fff;
+}
+
+/* Buttons */
+.btn-analyze {
+    background: var(--gold-gradient);
+    color: #000;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: all 0.3s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.btn-analyze:hover {
+    background: linear-gradient(135deg, #FFD700 0%, #FFF8DC 100%);
+    transform: scale(1.05);
+    box-shadow: var(--shadow-gold);
+}
+
+/* Positive/Negative values */
+.positive {
+    color: var(--positive);
+    font-weight: bold;
+}
+
+.negative {
+    color: var(--negative);
+    font-weight: bold;
+}
+
+/* Chart containers */
+.chart-container {
+    background: linear-gradient(180deg, #0f0f0f 0%, #1a1a2e 100%);
+    border-radius: 8px;
+    padding: 1rem;
+    height: 300px;
+    position: relative;
+    border: 1px solid #333;
+}
+
+.chart-container:hover {
+    border-color: #D4AF37;
+}
+
+.chart-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    background: #252525;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-style: italic;
+    border: 1px solid #444;
+}
+
+/* Footer */
+.footer {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+    border-top: 1px solid #333;
+    margin-top: 3rem;
+    background: linear-gradient(180deg, #0a0a0a 0%, #0f0f0f 100%);
+}
+
+.footer p:first-child {
+    background: var(--gold-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 600;
+}
+
+/* Gold divider */
+.gold-divider {
+    border: none;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, #D4AF37 50%, transparent 100%);
+    margin: 1.5rem 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .grid-2 {
+        grid-template-columns: 1fr;
+    }
+
+    .metrics-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .header h1 {
+        font-size: 1.5rem;
+    }
+}
