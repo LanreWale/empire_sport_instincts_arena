@@ -1,0 +1,114 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  EMPIRE SPORT INSTINCTS ARENA — Docker Compose Orchestration
+#  Dark Gold Premium Edition v2.0 | Production Ready
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  Brand Identity:
+#    Primary Logo: Crowned Shield Monogram (Gold "E" on Black)
+#    Secondary: Stadium Arena Wordmark (Metallic Gold + Silver)
+#    Asset Path: BRAND_ASSET/empire_logo_primary.png
+#               BRAND_ASSET/empire_logo_arena.png
+#
+#  Stack: ESIA Multi-Service Architecture
+#  Purpose: Core engine + Dashboard + PostgreSQL + Redis + Jupyter
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  Services:
+#    • esia-core       — INSTINCT SCOUT data ingestion scheduler
+#    • esia-dashboard  — Arena analytics dashboard (Dash/Plotly)
+#    • postgres        — System of record (PostgreSQL 15)
+#    • redis           — Caching & message broker layer
+#    • jupyter         — Research & model development notebooks
+#
+#  Volumes:
+#    • esia-data       — Application persistent data
+#    • postgres-data   — Database persistent storage
+#
+# ══════════════════════════════════════════════════════════════════════════════
+
+version: '3.8'
+
+services:
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  SERVICE: esia-core  —  Core Data Ingestion Engine
+# ──────────────────────────────────────────────────────────────────────────────
+  esia-core:
+    build: .
+    container_name: empire-sport-instincts-core
+    # ──────────────────────────────────────────────────────────────────────────────
+# ⚜  PERSISTENT VOLUMES
+# ──────────────────────────────────────────────────────────────────────────────
+volumes:
+      - ./:/app
+      - esia-data:/app/data
+    environment:
+      - PYTHONPATH=/app
+      - DB_URL=postgresql://esia:esia@postgres:5432/esia_db
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    command: python -m data_ingestion.scheduler
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  SERVICE: esia-dashboard  —  Arena Analytics Dashboard
+# ──────────────────────────────────────────────────────────────────────────────
+  esia-dashboard:
+    build: .
+    container_name: empire-arena-dashboard
+    ports:
+      - "8050:8050"
+    volumes:
+      - ./:/app
+    environment:
+      - PYTHONPATH=/app
+    command: python -m dashboard.app
+    depends_on:
+      - postgres
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  SERVICE: postgres  —  PostgreSQL System of Record
+# ──────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: esia-postgres
+    environment:
+      POSTGRES_USER: esia
+      POSTGRES_PASSWORD: esia
+      POSTGRES_DB: esia_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  SERVICE: redis  —  Redis Cache & Broker
+# ──────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: esia-redis
+    ports:
+      - "6379:6379"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  SERVICE: jupyter  —  Jupyter Research Environment
+# ──────────────────────────────────────────────────────────────────────────────
+  jupyter:
+    build: .
+    container_name: esia-jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./:/app
+      - ./notebooks:/home/jovyan/notebooks
+    command: jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+
+volumes:
+  esia-data:
+  postgres-data:
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  END OF COMPOSE — EMPIRE SPORT INSTINCTS ARENA
+# ⚜  Dark Gold Premium Edition v2.0 | Production Ready
+# ──────────────────────────────────────────────────────────────────────────────

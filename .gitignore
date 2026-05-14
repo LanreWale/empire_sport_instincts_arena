@@ -1,0 +1,124 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  EMPIRE SPORT INSTINCTS ARENA — Git Ignore Rules
+#  Dark Gold Premium Edition v2.0 | Production Ready
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  Brand Identity:
+#    Primary Logo: Crowned Shield Monogram (Gold "E" on Black)
+#    Secondary: Stadium Arena Wordmark (Metallic Gold + Silver)
+#    Asset Path: BRAND_ASSET/empire_logo_primary.png
+#               BRAND_ASSET/empire_logo_arena.png
+#
+#  Purpose: Prevent build artifacts, secrets, and runtime data from entering git
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  PYTHON RUNTIME — Bytecode & Virtual Environments
+# ──────────────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+.venv
+venv/
+ENV/
+env/
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  SECRETS & CONFIGURATION — Never commit credentials
+# ──────────────────────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+secrets.json
+config.local.yaml
+*.pem
+*.key
+*.crt
+credentials.json
+token.json
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  DATA ASSETS — Runtime data, downloads, outputs
+# ──────────────────────────────────────────────────────────────────────────────
+data/
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+models/
+checkpoints/
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  LOGS & TEMPORARY — Runtime artifacts
+# ──────────────────────────────────────────────────────────────────────────────
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  IDE & EDITOR — Local development environment
+# ──────────────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  JUPYTER — Notebook checkpoints and outputs
+# ──────────────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  DOCKER — Local build artifacts
+# ──────────────────────────────────────────────────────────────────────────────
+.dockerignore
+docker-compose.override.yml
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  TESTING — Coverage reports and artifacts
+# ──────────────────────────────────────────────────────────────────────────────
+.coverage
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  END OF MANIFEST — EMPIRE SPORT INSTINCTS ARENA
+# ⚜  Dark Gold Premium Edition v2.0 | Production Ready
+# ──────────────────────────────────────────────────────────────────────────────

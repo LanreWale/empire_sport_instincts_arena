@@ -1,0 +1,111 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  EMPIRE SPORT INSTINCTS ARENA — Python Dependencies Manifest
+#  Dark Gold Premium Edition v2.0 | Production Ready
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  Brand Identity:
+#    Primary Logo: Crowned Shield Monogram (Gold "E" on Black)
+#    Secondary: Stadium Arena Wordmark (Metallic Gold + Silver)
+#    Asset Path: BRAND_ASSET/empire_logo_primary.png
+#               BRAND_ASSET/empire_logo_arena.png
+#
+#  Manifest: requirements.txt
+#  Purpose: Complete dependency specification for ESIA stack
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  Dependency Tiers:
+#    • CORE       — Required for all operations (uncommented)
+#    • OPTIONAL   — Advanced features, large binaries (commented)
+#    • RESEARCH   — Jupyter, ML experimentation (commented where heavy)
+#
+#  Installation: pip install -r requirements.txt
+# ══════════════════════════════════════════════════════════════════════════════
+
+# EMPIRE SPORT INSTINCTS ARENA - Dependencies
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  DATA COLLECTION — INSTINCT SCOUT Sources
+# ──────────────────────────────────────────────────────────────────────────────
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+# selenium>=4.15.0         # COMMENTED: Optional, heavy download
+lxml>=4.9.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  DATA PROCESSING — ARENA FORGE Engine
+# ──────────────────────────────────────────────────────────────────────────────
+pandas>=2.1.0
+numpy>=1.24.0
+scipy>=1.11.0
+# polars>=0.20.0           # COMMENTED: Optional, large binary
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  MACHINE LEARNING — EMPIRE CORE Models
+# ──────────────────────────────────────────────────────────────────────────────
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+# lightgbm>=4.1.0          # COMMENTED: Optional, XGBoost covers this
+# catboost>=1.2.0          # COMMENTED: 100MB download, connection drops
+
+# Deep Learning (optional, for advanced models)
+# torch>=2.1.0             # COMMENTED: 200MB+ download, not needed for core
+# transformers>=4.35.0     # COMMENTED: Depends on torch
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  PROBABILISTIC MODELING — Bayesian Layer
+# ──────────────────────────────────────────────────────────────────────────────
+# pymc>=5.10.0             # COMMENTED: Complex dependencies, optional
+# arviz>=0.16.0            # COMMENTED: Depends on pymc
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  FEATURE ENGINEERING — Signal Extraction
+# ──────────────────────────────────────────────────────────────────────────────
+feature-engine>=1.6.0
+# tsfresh>=0.20.0          # COMMENTED: Heavy, optional
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  DATABASE — System of Record & Cache
+# ──────────────────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+redis>=5.0.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  DASHBOARD — ARENA Visualization Layer
+# ──────────────────────────────────────────────────────────────────────────────
+flask>=3.0.0
+dash>=2.14.0
+plotly>=5.18.0
+streamlit>=1.28.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  VISUALIZATION — Plotting & Graphics
+# ──────────────────────────────────────────────────────────────────────────────
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  UTILITIES — Orchestration & Infrastructure
+# ──────────────────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+celery>=5.3.0
+schedule>=1.2.0
+tqdm>=4.66.0
+python-dateutil>=2.8.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  TESTING — Quality Assurance
+# ──────────────────────────────────────────────────────────────────────────────
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  JUPYTER — Research & Development Environment
+# ──────────────────────────────────────────────────────────────────────────────
+jupyter>=1.0.0
+ipython>=8.16.0
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚜  END OF MANIFEST — EMPIRE SPORT INSTINCTS ARENA
+# ⚜  Dark Gold Premium Edition v2.0 | Production Ready
+# ⚜  Install: pip install -r requirements.txt
+# ───────────────
