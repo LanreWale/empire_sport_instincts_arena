@@ -1,0 +1,206 @@
+# ═══════════════════════════════════════════════════════════
+# EMPIRE SPORT INSTINCTS ARENA — Global Settings
+# Premium Configuration | Where Precision Meets Power
+# ═══════════════════════════════════════════════════════════
+
+app:
+  name: "EMPIRE SPORT INSTINCTS ARENA"
+  short_name: "ESIA"
+  version: "1.0.0-premium"
+  environment: "development"
+  log_level: "INFO"
+  timezone: "UTC"
+  brand_colors:
+    gold_primary: "#D4AF37"
+    gold_bright: "#FFD700"
+    gold_dark: "#B8860B"
+    silver: "#C0C0C0"
+    dark_bg: "#0a0a0a"
+    dark_secondary: "#1a1a1a"
+    positive: "#00FF00"
+    negative: "#FF4444"
+  logo:
+    main: "BRAND_ASSETS/1000759537.png"
+    icon: "BRAND_ASSETS/1000759538.png"
+
+# Database Configuration
+database:
+  url: "${DB_URL}"
+  pool_size: 20
+  max_overflow: 10
+  pool_timeout: 30
+  connection_string: "postgresql://user:pass@localhost/empire_arena"
+
+# Redis Cache
+redis:
+  url: "${REDIS_URL}"
+  ttl: 3600
+  prefix: "ARENA:"
+
+# ═══════════════════════════════════════════════════════════
+# DATA COLLECTION — Premium Intelligence Gathering
+# ═══════════════════════════════════════════════════════════
+data_collection:
+  football:
+    enabled: true
+    module: "ARENA FORGE — Football"
+    sources:
+      - name: "statsbomb"
+        type: "open_data"
+        url: "https://github.com/statsbomb/open-data"
+        tier: "gold"
+      - name: "understat"
+        type: "scraper"
+        url: "https://understat.com"
+        tier: "premium"
+      - name: "football_data"
+        type: "csv"
+        url: "https://www.football-data.co.uk"
+        tier: "standard"
+    update_interval: 3600  # seconds
+    priority: "high"
+
+  nba:
+    enabled: true
+    module: "ARENA FORGE — NBA"
+    sources:
+      - name: "nba_api"
+        type: "api"
+        package: "nba_api"
+        tier: "gold"
+      - name: "basketball_reference"
+        type: "scraper"
+        url: "https://www.basketball-reference.com"
+        tier: "premium"
+    update_interval: 1800
+    priority: "high"
+
+  nfl:
+    enabled: true
+    module: "ARENA FORGE — NFL"
+    sources:
+      - name: "nflfastR"
+        type: "package"
+        package: "nflfastR"
+        tier: "gold"
+      - name: "pro_football_reference"
+        type: "scraper"
+        url: "https://www.pro-football-reference.com"
+        tier: "premium"
+    update_interval: 3600
+    priority: "medium"
+
+  tennis:
+    enabled: true
+    module: "ARENA FORGE — Tennis"
+    sources:
+      - name: "jeff_sackmann"
+        type: "github"
+        url: "https://github.com/JeffSackmann"
+        tier: "gold"
+      - name: "atp_wta"
+        type: "scraper"
+        url: "https://www.atptour.com"
+        tier: "premium"
+    update_interval: 7200
+    priority: "medium"
+
+# ═══════════════════════════════════════════════════════════
+# ODDS COLLECTION — Premium Market Intelligence
+# ═══════════════════════════════════════════════════════════
+odds:
+  enabled: true
+  module: "COMMAND CENTRE — Odds"
+  sources:
+    - name: "the_odds_api"
+      type: "api"
+      url: "https://api.the-odds-api.com"
+      free_tier_limit: 500  # requests/month
+      tier: "standard"
+    - name: "sharp_api"
+      type: "api"
+      url: "https://api.sharpapi.io"
+      free_tier_limit: 17280  # requests/day (12/min)
+      tier: "premium"
+  update_interval: 300  # 5 minutes
+  priority: "critical"
+
+# ═══════════════════════════════════════════════════════════
+# MODEL SETTINGS — Premium Predictive Intelligence
+# ═══════════════════════════════════════════════════════════
+models:
+  ensemble_weights:
+    xgboost: 0.40
+    transformer: 0.35
+    bayesian: 0.25
+
+  training:
+    test_size: 0.20
+    validation_size: 0.10
+    random_state: 42
+    cv_folds: 5
+    early_stopping_rounds: 50
+
+  features:
+    rolling_window: [5, 10, 20]
+    momentum_periods: [3, 5, 10]
+    form_weight_decay: 0.90
+    feature_version: "v1.0-premium"
+
+# ═══════════════════════════════════════════════════════════
+# RISK MANAGEMENT — Premium Capital Protection
+# ═══════════════════════════════════════════════════════════
+risk:
+  bankroll:
+    initial: 10000.00
+    currency: "USD"
+    min_bet: 10.00
+    max_bet_pct: 0.05  # 5% of bankroll max
+    module: "COMMAND CENTRE — Bankroll"
+
+  kelly:
+    fraction: 0.25  # Quarter Kelly for safety
+    min_edge: 0.02  # 2% minimum edge
+    max_kelly_pct: 0.03  # Cap at 3% even if Kelly says higher
+    module: "COMMAND CENTRE — Kelly"
+
+  drawdown:
+    max_drawdown_pct: 0.20  # Stop if 20% drawdown
+    cooldown_period_days: 7
+    warning_threshold: 0.15
+    module: "COMMAND CENTRE — Drawdown"
+
+  diversification:
+    max_sport_exposure: 0.40  # Max 40% in one sport
+    max_daily_bets: 10
+    min_time_between_bets: 300  # 5 minutes
+
+# ═══════════════════════════════════════════════════════════
+# PREDICTION THRESHOLDS — Premium Signal Quality
+# ═══════════════════════════════════════════════════════════
+predictions:
+  min_confidence: 0.55
+  min_ev: 0.02  # 2% expected value minimum
+  max_uncertainty: 0.15  # Standard deviation cap
+  min_kelly_fraction: 0.005  # 0.5% minimum position
+
+# ═══════════════════════════════════════════════════════════
+# DASHBOARD SETTINGS — Premium Visual Experience
+# ═══════════════════════════════════════════════════════════
+dashboard:
+  theme: "dark-premium"
+  refresh_interval: 30  # seconds
+  max_rows_display: 100
+  chart_height: 400
+  logo_width_header: 500
+  logo_width_sidebar: 90
+  color_scheme:
+    background: "#0a0a0a"
+    card_bg: "#1E1E1E"
+    primary: "#D4AF37"
+    secondary: "#FFD700"
+    accent: "#B8860B"
+    text_primary: "#e0e0e0"
+    text_secondary: "#888888"
+    positive: "#00FF00"
+    negative: "#FF4444"

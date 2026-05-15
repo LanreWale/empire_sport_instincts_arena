@@ -1,0 +1,271 @@
+# ═══════════════════════════════════════════════════════════
+# EMPIRE SPORT INSTINCTS ARENA — Sport-Specific Configuration
+# Premium Feature Engineering Parameters
+# ═══════════════════════════════════════════════════════════
+
+# ─────────────────────────────────────────────────────────
+# FOOTBALL — The Beautiful Game
+# ─────────────────────────────────────────────────────────
+football:
+  display_name: "Football"
+  module: "ARENA FORGE — Football"
+  icon: "⚽"
+  color: "#1a5f1a"
+
+  leagues:
+    - id: "EPL"
+      name: "Premier League"
+      country: "England"
+      season_format: "august_to_may"
+      tier: "gold"
+    - id: "LL"
+      name: "La Liga"
+      country: "Spain"
+      season_format: "august_to_may"
+      tier: "gold"
+    - id: "BL"
+      name: "Bundesliga"
+      country: "Germany"
+      season_format: "august_to_may"
+      tier: "gold"
+    - id: "SA"
+      name: "Serie A"
+      country: "Italy"
+      season_format: "august_to_may"
+      tier: "gold"
+    - id: "L1"
+      name: "Ligue 1"
+      country: "France"
+      season_format: "august_to_may"
+      tier: "premium"
+    - id: "UCL"
+      name: "Champions League"
+      country: "Europe"
+      season_format: "september_to_june"
+      tier: "elite"
+
+  features:
+    offensive:
+      - xg_home_rolling_5
+      - xg_away_rolling_5
+      - xg_diff
+      - possession_home_rolling
+      - shots_on_target_diff
+      - big_chances_home
+      - big_chances_away
+    form:
+      - form_home_last_5
+      - form_away_last_5
+      - form_points_diff
+      - home_advantage_factor
+    h2h:
+      - h2h_home_win_pct
+      - h2h_goals_avg
+      - h2h_btts_pct
+      - h2h_over_2_5_pct
+    rest:
+      - rest_days_home
+      - rest_days_away
+      - fatigue_home
+      - fatigue_away
+      - congestion_home
+      - congestion_away
+    context:
+      - league_position_diff
+      - season_progress
+      - relegation_pressure_home
+      - title_race_pressure_home
+    trends:
+      - goals_scored_trend
+      - goals_conceded_trend
+      - clean_sheet_pct_home
+      - clean_sheet_pct_away
+      - btts_pct
+      - over_2_5_pct
+      - corner_diff
+      - card_diff
+    market:
+      - market_implied_home_prob
+      - market_implied_draw_prob
+      - market_implied_away_prob
+      - odds_movement_home
+      - sharp_money_indicator
+
+  markets:
+    - match_result
+    - over_under_2_5
+    - both_teams_to_score
+    - asian_handicap
+    - correct_score
+
+# ─────────────────────────────────────────────────────────
+# NBA — Hardwood Intelligence
+# ─────────────────────────────────────────────────────────
+nba:
+  display_name: "NBA"
+  module: "ARENA FORGE — NBA"
+  icon: "🏀"
+  color: "#ff6600"
+
+  features:
+    offensive:
+      - pts_avg_last_10
+      - true_shooting_pct
+      - effective_fg_pct
+      - offensive_rating
+      - pace_factor
+    defensive:
+      - pts_allowed_avg_last_10
+      - defensive_rating
+      - rebound_pct
+      - block_pct
+      - steal_pct
+    situational:
+      - rest_days
+      - back_to_back
+      - home_court_advantage
+      - travel_distance
+      - altitude_factor
+    momentum:
+      - win_streak
+      - momentum_score
+      - plus_minus_avg
+      - clutch_performance
+      - blowout_factor
+    efficiency:
+      - turnover_pct
+      - assist_to_turnover
+      - free_throw_rate
+      - three_point_rate
+    market:
+      - h2h_avg_margin
+      - player_efficiency_diff
+      - injury_impact_score
+      - lineup_consistency
+
+  markets:
+    - moneyline
+    - spread
+    - over_under
+    - player_props
+    - team_totals
+
+# ─────────────────────────────────────────────────────────
+# NFL — Gridiron Analytics
+# ─────────────────────────────────────────────────────────
+nfl:
+  display_name: "NFL"
+  module: "ARENA FORGE — NFL"
+  icon: "🏈"
+  color: "#8B4513"
+
+  features:
+    epa_based:
+      - epa_offense
+      - epa_defense
+      - success_rate
+      - explosive_play_pct
+      - pass_epa
+      - rush_epa
+    situational:
+      - turnover_margin
+      - red_zone_efficiency
+      - third_down_pct
+      - pressure_rate
+      - blitz_frequency
+    context:
+      - rest_days
+      - travel_distance
+      - weather_factor
+      - division_game
+      - primetime_game
+    trends:
+      - win_streak
+      - penalty_yards_avg
+      - time_of_possession_avg
+      - injury_impact_score
+    market:
+      - h2h_win_pct
+      - playoff_experience
+      - offensive_line_rating
+      - defensive_line_rating
+
+  markets:
+    - moneyline
+    - spread
+    - over_under
+    - player_props
+    - first_half
+
+# ─────────────────────────────────────────────────────────
+# TENNIS — Court Intelligence
+# ─────────────────────────────────────────────────────────
+tennis:
+  display_name: "Tennis"
+  module: "ARENA FORGE — Tennis"
+  icon: "🎾"
+  color: "#CCFF00"
+
+  surfaces:
+    - hard
+    - clay
+    - grass
+    - carpet
+
+  features:
+    ratings:
+      - elo_rating
+      - surface_elo
+      - elo_diff
+      - elo_expected_win
+    form:
+      - recent_form
+      - matches_last_30d
+      - fatigue_index
+    surface:
+      - surface_win_pct
+      - surface_experience
+      - surface_advantage
+    statistics:
+      - head_to_head
+      - tiebreak_win_pct
+      - break_point_conversion
+      - first_serve_pct
+    physical:
+      - ace_rate
+      - double_fault_rate
+      - return_games_won_pct
+      - ranking_diff
+      - age_factor
+      - height_advantage
+
+  markets:
+    - match_winner
+    - set_betting
+    - game_handicap
+    - over_under_games
+    - correct_score
+
+# ─────────────────────────────────────────────────────────
+# GLOBAL FEATURE ENGINEERING SETTINGS
+# ─────────────────────────────────────────────────────────
+feature_engineering:
+  version: "v1.0-premium"
+  cache_ttl: 3600
+  max_rolling_window: 20
+  default_form_matches: 5
+  elo_k_factor: 32
+  elo_initial_rating: 1500
+
+# ─────────────────────────────────────────────────────────
+# PREMIUM BRAND COLORS (for programmatic use)
+# ─────────────────────────────────────────────────────────
+brand:
+  gold_primary: "#D4AF37"
+  gold_bright: "#FFD700"
+  gold_dark: "#B8860B"
+  silver: "#C0C0C0"
+  dark_bg: "#0a0a0a"
+  dark_secondary: "#1a1a1a"
+  positive: "#00FF00"
+  negative: "#FF4444"
