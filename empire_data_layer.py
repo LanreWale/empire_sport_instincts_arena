@@ -892,21 +892,18 @@ if __name__ == "__main__":
     print("🚀 EMPIRE SPORT DATA LAYER — Self-Test")
     print("=" * 60)
 
-    router = EmpireDataRouter()
+        router = EmpireDataRouter()
 
-    print("
-📡 Fetching live matches...")
+    print("\n📡 Fetching live matches...")
     live = router.get_live_matches()
     print(f"✅ Retrieved {len(live)} live matches")
     print(live.head())
 
-    print("
-💰 Fetching value opportunities...")
+    print("\n💰 Fetching value opportunities...")
     value = router.get_value_opportunities()
     print(f"✅ Found {len(value)} value opportunities")
     print(value.head())
 
-    print("
-" + "=" * 60)
+    print("\n" + "=" * 60)
     print("EMPIRE Data Layer ready for dashboard integration.")
     print("Set API keys in environment variables to enable live data.")
