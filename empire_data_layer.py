@@ -882,17 +882,17 @@ class EmpireDashboardData:
         """Update last refresh timestamp."""
         self.last_refresh = datetime.now()
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # USAGE EXAMPLE
 # ════════════════════════════════════════════════════════════════════════════════
+
 
 if __name__ == "__main__":
     # Test the data layer
     print("🚀 EMPIRE SPORT DATA LAYER — Self-Test")
     print("=" * 60)
 
-        router = EmpireDataRouter()
+    router = EmpireDataRouter()
 
     print("\n📡 Fetching live matches...")
     live = router.get_live_matches()
