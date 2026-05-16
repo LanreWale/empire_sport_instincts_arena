@@ -515,25 +515,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-        st.markdown("---")
-        st.markdown("**Risk management rules**")
-        rules = [
-            "Quarter Kelly sizing — never risk more than 25% of full Kelly",
-            "Max 3% of bankroll per position, regardless of edge",
-            "Max 40% exposure to any single sport",
-            "Pause at 20% drawdown — 7-day cooldown",
-            "Maximum 10 bets per day",
-        ]
-        for r in rules:
-            st.markdown(f"• {r}")
-
-    # ── Auto-refresh ─────────────────────────────────────────────────────────
-    if auto_refresh and data.is_live:
-        time.sleep(30)
-        st.rerun()
-
-
-if __name__ == "__main__":
-    main()
-            
