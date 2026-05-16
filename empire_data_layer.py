@@ -202,7 +202,7 @@ class Match:
 @dataclass
 class OddsSnapshot:
     """Bookmaker odds snapshot for value detection."""
-        match_id: str
+    match_id: str
     bookmaker: str
     market: str
     home_odds: float
@@ -211,6 +211,7 @@ class OddsSnapshot:
     over_odds: Optional[float] = None
     under_odds: Optional[float] = None
     timestamp: Optional[datetime] = None
+
 
     def to_dataframe_row(self) -> Dict:
         return {
