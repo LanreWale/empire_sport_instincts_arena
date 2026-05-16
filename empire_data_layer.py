@@ -202,12 +202,12 @@ class Match:
 @dataclass
 class OddsSnapshot:
     """Bookmaker odds snapshot for value detection."""
-    match_id: str
+        match_id: str
     bookmaker: str
     market: str
     home_odds: float
-    draw_odds: Optional[float] = None
     away_odds: float
+    draw_odds: Optional[float] = None
     over_odds: Optional[float] = None
     under_odds: Optional[float] = None
     timestamp: Optional[datetime] = None
