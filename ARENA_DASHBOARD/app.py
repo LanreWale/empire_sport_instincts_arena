@@ -720,123 +720,128 @@ def render_match_detail(match_id: str, match_row: pd.Series):
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN ARENA VIEW — SPORT TABS + LEAGUE FILTER + MATCH STATUS + MATCH TABLE
 # ══════════════════════════════════════════════════════════════════════════════
+
+def render_sport_tab(tab_name: str, sport_key: str):
+    """Render content for a single sport tab. Called only when tab is active."""
+
+    # Use tab_name for unique keys (includes emoji, always unique)
+    key_prefix = tab_name.replace(" ", "_").replace("⚽", "f").replace("🏀", "b").replace("🏈", "nfl").replace("🎾", "t").replace("🏒", "nhl")
+
+    # Filters row
+    filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2, 2, 2, 1])
+
+    with filter_col1:
+        try:
+            leagues = data.router.get_leagues(sport_key)
+            if not leagues:
+                leagues = ["All Leagues"]
+        except Exception:
+            leagues = ["All Leagues"]
+
+        selected_league = st.selectbox(
+            "🏆 SELECT LEAGUE",
+            options=leagues,
+            key=f"league_{key_prefix}"
+        )
+
+    with filter_col2:
+        status_options = ["ALL", "LIVE", "SCHEDULED", "FINISHED", "HALFTIME"]
+        selected_status = st.selectbox(
+            "📊 MATCH STATUS",
+            options=status_options,
+            key=f"status_{key_prefix}"
+        )
+
+    with filter_col3:
+        view_options = ["📋 TABLE VIEW", "🃏 CARD VIEW"]
+        selected_view = st.selectbox(
+            "👁️ DISPLAY MODE",
+            options=view_options,
+            key=f"view_{key_prefix}"
+        )
+
+    with filter_col4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 REFRESH", key=f"refresh_{key_prefix}", use_container_width=True):
+            st.session_state.last_refresh = time.time()
+            st.cache_data.clear()
+            st.rerun()
+
+    # Fetch matches
+    try:
+        if selected_status == "LIVE":
+            matches_df = data.router.get_live_matches(sport_key)
+        elif selected_status == "SCHEDULED":
+            matches_df = data.get_upcoming_matches_df()
+        else:
+            matches_df = data.router.get_matches_by_status(selected_status, sport_key)
+
+        if selected_league != "All Leagues" and not matches_df.empty:
+            matches_df = matches_df[matches_df["LEAGUE"] == selected_league]
+    except Exception as e:
+        st.error(f"Error fetching matches: {str(e)[:100]}")
+        matches_df = pd.DataFrame()
+
+    # Display
+    if matches_df.empty:
+        st.info(f"🔍 No {selected_status.lower()} matches found for {tab_name}. Try another status or refresh.")
+        return
+
+    st.markdown(f"<div style='color: #888; font-size: 0.85rem; margin-bottom: 10px;'>📊 Showing {len(matches_df)} matches</div>", unsafe_allow_html=True)
+
+    if selected_view == "📋 TABLE VIEW":
+        display_df = matches_df.drop(columns=["MATCH_ID"]) if "MATCH_ID" in matches_df.columns else matches_df
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"match_table_{key_prefix}"
+        )
+
+        selection = st.session_state.get(f"match_table_{key_prefix}")
+        if selection and "rows" in selection and selection["rows"]:
+            selected_idx = selection["rows"][0]
+            if selected_idx < len(matches_df):
+                selected_match = matches_df.iloc[selected_idx]
+                match_id = selected_match.get("MATCH_ID", "")
+                if match_id:
+                    render_match_detail(match_id, selected_match)
+
+    else:  # CARD VIEW
+        cols = st.columns(2)
+        for idx, (_, match) in enumerate(matches_df.iterrows()):
+            with cols[idx % 2]:
+                with st.expander(f"{match.get('MATCH', 'vs')} — {match.get('STATUS', '')}", expanded=False):
+                    match_id = match.get("MATCH_ID", "")
+                    if match_id:
+                        render_match_detail(match_id, match)
+                    else:
+                        st.info("Match details unavailable")
+
+
 def render_arena():
     st.markdown('<div class="section-header">🏟️ EMPIRE ARENA</div>', unsafe_allow_html=True)
 
-    # Sport category tabs
-    sport_tabs = st.tabs(["⚽ FOOTBALL", "🏀 BASKETBALL", "🏈 NFL", "🎾 TENNIS", "🏒 NHL", "🏀 NBA"])
-
-    sport_mapping = {
+    # Sport tabs — each maps to a unique key prefix
+    sport_tabs = {
         "⚽ FOOTBALL": "football",
-        "🏀 BASKETBALL": "basketball",
+        "🏀 BASKETBALL": "basketball", 
         "🏈 NFL": "americanfootball",
         "🎾 TENNIS": "tennis",
         "🏒 NHL": "icehockey",
-        "🏀 NBA": "basketball"
+        "🏀 NBA": "basketball_nba"  # Unique key even though same sport
     }
 
-    for tab, sport_name in zip(sport_tabs, sport_mapping.keys()):
+    tab_names = list(sport_tabs.keys())
+    tabs = st.tabs(tab_names)
+
+    for tab, tab_name in zip(tabs, tab_names):
         with tab:
-            sport_key = sport_mapping[sport_name]
-
-            # Filters row
-            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2, 2, 2, 1])
-
-            with filter_col1:
-                # League dropdown — populated from available leagues
-                try:
-                    leagues = data.router.get_leagues(sport_key)
-                    if not leagues:
-                        leagues = ["All Leagues"]
-                except Exception:
-                    leagues = ["All Leagues"]
-
-                selected_league = st.selectbox(
-                    "🏆 SELECT LEAGUE",
-                    options=leagues,
-                    key=f"league_{sport_key}"
-                )
-
-            with filter_col2:
-                status_options = ["ALL", "LIVE", "SCHEDULED", "FINISHED", "HALFTIME"]
-                selected_status = st.selectbox(
-                    "📊 MATCH STATUS",
-                    options=status_options,
-                    key=f"status_{sport_key}"
-                )
-
-            with filter_col3:
-                view_options = ["📋 TABLE VIEW", "🃏 CARD VIEW"]
-                selected_view = st.selectbox(
-                    "👁️ DISPLAY MODE",
-                    options=view_options,
-                    key=f"view_{sport_key}"
-                )
-
-            with filter_col4:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🔄 REFRESH", key=f"refresh_{sport_key}", use_container_width=True):
-                    st.session_state.last_refresh = time.time()
-                    st.cache_data.clear()
-                    st.rerun()
-
-            # Fetch matches based on filters
-            try:
-                if selected_status == "LIVE":
-                    matches_df = data.router.get_live_matches(sport_key)
-                elif selected_status == "SCHEDULED":
-                    matches_df = data.get_upcoming_matches_df()
-                else:
-                    matches_df = data.router.get_matches_by_status(selected_status, sport_key)
-
-                # Filter by league if selected
-                if selected_league != "All Leagues" and not matches_df.empty:
-                    matches_df = matches_df[matches_df["LEAGUE"] == selected_league]
-
-            except Exception as e:
-                st.error(f"Error fetching matches: {str(e)[:100]}")
-                matches_df = pd.DataFrame()
-
-            # Display matches
-            if matches_df.empty:
-                st.info(f"🔍 No {selected_status.lower()} matches found for {sport_name}. Try another status or refresh.")
-            else:
-                st.markdown(f"<div style='color: #888; font-size: 0.85rem; margin-bottom: 10px;'>📊 Showing {len(matches_df)} matches</div>", unsafe_allow_html=True)
-
-                if selected_view == "📋 TABLE VIEW":
-                    # Table view with clickable rows
-                    # Hide MATCH_ID from display but keep it for selection
-                    display_df = matches_df.drop(columns=["MATCH_ID"]) if "MATCH_ID" in matches_df.columns else matches_df
-
-                    st.dataframe(
-                        display_df,
-                        use_container_width=True,
-                        hide_index=True,
-                        on_select="rerun",
-                        selection_mode="single-row",
-                        key=f"match_table_{sport_key}"
-                    )
-
-                    # Check if a row was selected
-                    selection = st.session_state.get(f"match_table_{sport_key}")
-                    if selection and "rows" in selection and selection["rows"]:
-                        selected_idx = selection["rows"][0]
-                        if selected_idx < len(matches_df):
-                            selected_match = matches_df.iloc[selected_idx]
-                            match_id = selected_match.get("MATCH_ID", "")
-                            if match_id:
-                                render_match_detail(match_id, selected_match)
-
-                else:  # CARD VIEW
-                    cols = st.columns(2)
-                    for idx, (_, match) in enumerate(matches_df.iterrows()):
-                        with cols[idx % 2]:
-                            with st.expander(f"{match.get('MATCH', 'vs')} — {match.get('STATUS', '')}", expanded=False):
-                                match_id = match.get("MATCH_ID", "")
-                                if match_id:
-                                    render_match_detail(match_id, match)
-                                else:
-                                    st.info("Match details unavailable")
+            sport_key = sport_tabs[tab_name]
+            render_sport_tab(tab_name, sport_key)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PREDICTIONS CENTER
