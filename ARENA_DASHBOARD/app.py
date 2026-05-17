@@ -25,7 +25,6 @@ st.set_page_config(
 )
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
-# FIXED: Added actual CSS content instead of empty style block
 st.markdown("""
 <style>
 .empire-header {
@@ -83,7 +82,6 @@ def main():
     """, unsafe_allow_html=True)
 
     # ── Live / Demo Mode banner ───────────────────────────────────────────────
-    # FIXED: data.is_live and data.missing_keys now exist as properties
     if data.is_live:
         provider_name = data.router.active_provider.name if data.router.active_provider else "Unknown"
         st.markdown(f"""
@@ -104,10 +102,9 @@ def main():
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
-        # FIXED: Handle missing logo gracefully
-        logo_path = Path(__file__).parent.parent / "BRAND_ASSET" / "empire_logo_primary.png"
+        logo_path = Path(__file__).parent.parent / "BRAND_ASSET" / "empire_logo_arena.png"
         if logo_path.exists():
-            st.image(str(logo_path), use_column_width=True)
+            st.image(str(logo_path), use_container_width=True)
         else:
             st.markdown("### ⚔️ EMPIRE")
         st.markdown("---")
@@ -130,7 +127,6 @@ def main():
     # ── API diagnostics (collapsible) ─────────────────────────────────────────
     if show_diagnostics:
         with st.expander("📡 API Connection Log", expanded=True):
-            # FIXED: data.connection_log now exists as property
             if data.connection_log:
                 for entry in data.connection_log:
                     icon = "🟢" if entry["status"] == "SUCCESS" else (
@@ -171,7 +167,6 @@ def main():
     with tab1:
         st.subheader("Live & Upcoming Matches")
         if not live_df.empty:
-            # Highlight live rows
             def highlight_live(row):
                 if "LIVE" in str(row.get("STATUS", "")):
                     return ["background-color: #0a1a0a"] * len(row)
@@ -189,7 +184,6 @@ def main():
         st.caption(f"Showing opportunities with EV > {min_ev_filter}%")
 
         if not value_df.empty:
-            # Apply EV filter
             def ev_to_float(ev_str):
                 try:
                     return float(str(ev_str).replace("%", "").replace("+", ""))
@@ -216,7 +210,6 @@ def main():
                     hide_index=True,
                 )
 
-                # Summary stats
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     buy_rows = filtered[filtered["SIGNAL"].str.contains("BUY", na=False)]
