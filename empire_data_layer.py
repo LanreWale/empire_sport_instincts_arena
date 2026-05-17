@@ -1117,6 +1117,51 @@ class EmpireDataRouter:
     # FIXED: Removed _mock_value_opportunities() — no fake data
 
 
+
+    def get_provider_status(self) -> List[Dict]:
+        """Return status of all providers for dashboard display."""
+        statuses = []
+        for provider in self.providers:
+            try:
+                matches = provider.get_live_matches()
+                if matches:
+                    statuses.append({
+                        "name": provider.name,
+                        "status": f"ONLINE — {len(matches)} matches",
+                        "response_time_ms": "-",
+                        "error": ""
+                    })
+                else:
+                    statuses.append({
+                        "name": provider.name,
+                        "status": "EMPTY — No matches returned",
+                        "response_time_ms": "-",
+                        "error": ""
+                    })
+            except Exception as e:
+                statuses.append({
+                    "name": provider.name,
+                    "status": f"OFFLINE — {str(e)[:30]}",
+                    "response_time_ms": "-",
+                    "error": str(e)[:50]
+                })
+        return statuses
+
+    def get_connection_log_df(self) -> pd.DataFrame:
+        """Return connection log as DataFrame for dashboard display."""
+        if not self.connection_log:
+            return pd.DataFrame(columns=["TIMESTAMP", "PROVIDER", "STATUS", "DETAIL"])
+        return pd.DataFrame([
+            {
+                "TIMESTAMP": entry.get("timestamp", ""),
+                "PROVIDER": entry.get("provider", ""),
+                "STATUS": entry.get("status", ""),
+                "DETAIL": entry.get("detail", "")
+            }
+            for entry in self.connection_log
+        ])
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # STREAMLIT INTEGRATION HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1143,6 +1188,23 @@ class EmpireDashboardData:
     def connection_log(self) -> List[Dict]:
         """FIXED: Property to access router connection log."""
         return self.router.connection_log
+
+
+    def get_upcoming_matches_df(self) -> pd.DataFrame:
+        """Get upcoming matches for dashboard display."""
+        all_matches = []
+        for provider in self.router.providers:
+            try:
+                matches = provider.get_upcoming_matches()
+                if matches:
+                    all_matches.extend(matches)
+            except Exception:
+                pass
+
+        if not all_matches:
+            return pd.DataFrame(columns=["TIME", "LEAGUE", "MATCH", "STATUS", "HOME", "DRAW", "AWAY", "PREDICTION"])
+
+        return pd.DataFrame([m.to_dataframe_row() for m in all_matches])
 
     def get_live_matches_df(self) -> pd.DataFrame:
         """Get live matches for dashboard display."""
