@@ -124,8 +124,8 @@ class APIConfig:
     THESPORTSDB_PRIORITY = 2  # Media-rich metadata + livescores
 
     # Cache settings
-    CACHE_TTL_SECONDS = 30  # Live data cache
-    ODDS_CACHE_TTL = 60     # Odds refresh rate
+    CACHE_TTL_SECONDS = 10  # Live data cache
+    ODDS_CACHE_TTL = 15     # Odds refresh rate
 
     # Rate limits
     MAX_RETRIES = 3
