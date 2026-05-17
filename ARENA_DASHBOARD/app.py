@@ -7,7 +7,6 @@ import sys
 import os
 
 # Add project root to Python path BEFORE importing empire_data_layer
-# app.py is in ARENA_DASHBOARD/, empire_data_layer.py is in parent (project root)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
@@ -17,11 +16,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import random
 import time
 
 # EMPIRE Live Data Integration — imports from project root
-from empire_data_layer import EmpireDashboardData
+from empire_data_layer import EmpireDashboardData, APIConfig
 
 st.set_page_config(
     page_title="EMPIRE COMMAND CENTER",
@@ -35,43 +33,12 @@ st.set_page_config(
 # ════════════════════════════════════════════════════════════════════════════════
 data = EmpireDashboardData()
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# AUTO-REFRESH + MANUAL REFRESH CONTROL
-# ════════════════════════════════════════════════════════════════════════════════
-
 REFRESH_INTERVAL = 15  # seconds
 
-# Initialize session state
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-# Calculate elapsed time since last refresh
 elapsed = time.time() - st.session_state.last_refresh
-
-# Manual refresh button (always available)
-col_refresh, col_status = st.columns([1, 4])
-with col_refresh:
-    if st.button("🔄 FORCE REFRESH", use_container_width=True):
-        st.session_state.last_refresh = time.time()
-        st.cache_data.clear()
-        st.rerun()
-
-with col_status:
-    # Show countdown / status
-    next_refresh = max(0, REFRESH_INTERVAL - elapsed)
-    status_color = "#00ff88" if data.is_live else "#FFD700"
-    status_text = "LIVE" if data.is_live else "DEMO"
-    st.markdown(
-        f'<div style="color: {status_color}; font-family: Orbitron; font-size: 0.8rem; '
-        f'padding-top: 8px;">● {status_text} | Next auto-refresh in {int(next_refresh)}s</div>',
-        unsafe_allow_html=True
-    )
-
-# Auto-refresh ONLY if interval has passed
-if elapsed >= REFRESH_INTERVAL:
-    st.session_state.last_refresh = time.time()
-    st.cache_data.clear()
-    st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PREMIUM DARK GOLD COMMAND CENTER CSS
@@ -85,28 +52,6 @@ st.html("""
         font-family: 'Rajdhani', sans-serif;
     }
 
-    /* Centered Logo Container - 90% width, reduced height */
-    .logo-center {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 10px 0;
-        width: 100%;
-    }
-
-    /* Logo: 90% width, natural height from aspect ratio, tight spacing */
-    .logo-img {
-        width: 90%;
-        height: auto;
-        max-height: 180px;
-        object-fit: contain;
-        display: block;
-        margin: 0 auto;
-    }
-
-    /* Tighten gap between logo and tagline */
     .logo-center {
         display: flex;
         flex-direction: column;
@@ -118,7 +63,15 @@ st.html("""
         margin-bottom: 0;
     }
 
-    /* Bold Gold Tagline */
+    .logo-img {
+        width: 90%;
+        height: auto;
+        max-height: 180px;
+        object-fit: contain;
+        display: block;
+        margin: 0 auto;
+    }
+
     .tagline-bold {
         font-family: 'Orbitron', sans-serif;
         font-size: 1.4rem;
@@ -145,7 +98,6 @@ st.html("""
         margin-bottom: 8px;
     }
 
-    /* Command Center Sidebar */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 100%);
         border-right: 3px solid #D4AF37;
@@ -158,7 +110,6 @@ st.html("""
         letter-spacing: 2px;
     }
 
-    /* AI Engine Status Badge */
     .ai-status {
         background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
         color: #000;
@@ -179,22 +130,8 @@ st.html("""
         50% { box-shadow: 0 0 25px rgba(0, 255, 136, 0.8); }
     }
 
-    /* DATAFRAME DARK GOLD — ULTRA-AGGRESSIVE SELECTORS */
-    [data-testid="stDataFrameResizable"],
-    [data-testid="stDataFrameResizable"] > div,
-    [data-testid="stDataFrame"] {
-        background-color: #1a1a2e !important;
-    }
-
-    [data-testid="stDataFrame"] [data-testid="stVirtualTable"],
-    [data-testid="stDataFrame"] .stDataFrameContainer {
-        background-color: #1a1a2e !important;
-    }
-
-    /* HEADER CELLS — Gold gradient */
     [data-testid="stDataFrame"] [role="columnheader"],
-    [data-testid="stDataFrame"] th,
-    [data-testid="stDataFrame"] .stDataFrameHeader {
+    [data-testid="stDataFrame"] th {
         background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%) !important;
         color: #000000 !important;
         font-family: 'Orbitron', sans-serif !important;
@@ -207,10 +144,8 @@ st.html("""
         text-align: center !important;
     }
 
-    /* DATA CELLS — Bright gold/white text on dark */
     [data-testid="stDataFrame"] [role="gridcell"],
-    [data-testid="stDataFrame"] td,
-    [data-testid="stDataFrame"] .stDataFrameCell {
+    [data-testid="stDataFrame"] td {
         background-color: #1a1a2e !important;
         color: #FFD700 !important;
         font-family: 'Rajdhani', sans-serif !important;
@@ -221,77 +156,17 @@ st.html("""
         text-align: center !important;
     }
 
-    /* Alternate row striping */
     [data-testid="stDataFrame"] [role="row"]:nth-child(even) [role="gridcell"] {
         background-color: #151525 !important;
     }
 
-    /* HOVER — Gold glow */
     [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] {
         background: rgba(212, 175, 55, 0.2) !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
-        transition: all 0.2s ease !important;
+        cursor: pointer;
     }
 
-    /* Row numbers/index column */
-    [data-testid="stDataFrame"] [role="rowheader"],
-    [data-testid="stDataFrame"] .stDataFrameRowIndex {
-        background-color: #16213e !important;
-        color: #D4AF37 !important;
-        font-family: 'Orbitron', sans-serif !important;
-        font-weight: 700 !important;
-        border-right: 2px solid #D4AF37 !important;
-    }
-
-    /* Scrollbar theming */
-    [data-testid="stDataFrameResizable"] ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-    [data-testid="stDataFrameResizable"] ::-webkit-scrollbar-track {
-        background: #16213e !important;
-    }
-    [data-testid="stDataFrameResizable"] ::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #D4AF37 0%, #B8860B 100%) !important;
-        border-radius: 4px;
-    }
-
-    /* st.table fallback */
-    [data-testid="stTable"] {
-        background-color: #1a1a2e !important;
-        border: 1px solid #333 !important;
-        border-radius: 8px !important;
-        overflow: hidden !important;
-    }
-    [data-testid="stTable"] th {
-        background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%) !important;
-        color: #000 !important;
-        font-family: 'Orbitron', sans-serif !important;
-        font-weight: 900 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 1px !important;
-        padding: 12px !important;
-        border: 1px solid #D4AF37 !important;
-    }
-    [data-testid="stTable"] td {
-        background-color: #1a1a2e !important;
-        color: #FFD700 !important;
-        font-family: 'Rajdhani', sans-serif !important;
-        font-weight: 500 !important;
-        padding: 10px 12px !important;
-        border: 1px solid #2a2a3e !important;
-    }
-    [data-testid="stTable"] tr:nth-child(even) td {
-        background-color: #151525 !important;
-    }
-    [data-testid="stTable"] tr:hover td {
-        background: rgba(212, 175, 55, 0.2) !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-    }
-
-    /* Section Headers */
     .section-header {
         font-family: 'Orbitron', sans-serif;
         font-size: 1.3rem;
@@ -306,7 +181,6 @@ st.html("""
         margin: 20px 0 10px 0;
     }
 
-    /* Live Match Cards */
     .match-card {
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
         border: 1px solid #333;
@@ -333,7 +207,6 @@ st.html("""
         50% { opacity: 0.5; }
     }
 
-    /* Metric Cards */
     [data-testid="stMetricValue"] {
         color: #FFD700 !important;
         font-family: 'Orbitron', sans-serif;
@@ -349,7 +222,6 @@ st.html("""
         text-transform: uppercase;
     }
 
-    /* World Clock */
     .world-clock {
         font-family: 'Orbitron', sans-serif;
         font-size: 0.9rem;
@@ -362,7 +234,6 @@ st.html("""
         margin: 10px 0;
     }
 
-    /* Activity Ticker */
     .ticker {
         background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
         border-top: 2px solid #D4AF37;
@@ -385,7 +256,6 @@ st.html("""
         100% { transform: translateX(-100%); }
     }
 
-    /* Buttons */
     .stButton>button {
         background: linear-gradient(135deg, #D4AF37 0%, #FFD700 100%);
         color: #000;
@@ -405,7 +275,6 @@ st.html("""
         transform: scale(1.05);
     }
 
-    /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 4px;
         background: rgba(26, 26, 46, 0.5);
@@ -429,7 +298,6 @@ st.html("""
         font-weight: 700;
     }
 
-    /* Gold Divider */
     .gold-divider {
         border: none;
         height: 2px;
@@ -437,7 +305,6 @@ st.html("""
         margin: 20px 0;
     }
 
-    /* Scrollbar */
     ::-webkit-scrollbar {
         width: 8px;
     }
@@ -451,18 +318,76 @@ st.html("""
         border-radius: 4px;
     }
 
-    /* Force dark on all block containers */
-    [data-testid="stVerticalBlock"] > div {
-        background-color: transparent !important;
-    }
-
-    /* Dark container wrapper */
     .dark-container {
         background-color: #1a1a2e;
         padding: 15px;
         border-radius: 10px;
         border: 1px solid #333;
         margin: 10px 0;
+    }
+
+    /* Detail panel styling */
+    .detail-panel {
+        background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
+        border: 2px solid #D4AF37;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 10px 0;
+    }
+
+    .detail-header {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 1.1rem;
+        color: #FFD700;
+        border-bottom: 2px solid #D4AF37;
+        padding-bottom: 10px;
+        margin-bottom: 15px;
+    }
+
+    .stat-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #2a2a3e;
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 0.95rem;
+    }
+
+    .stat-label {
+        color: #888;
+    }
+
+    .stat-value {
+        color: #FFD700;
+        font-weight: 700;
+    }
+
+    .odds-row {
+        display: flex;
+        justify-content: space-around;
+        padding: 15px;
+        background: rgba(212, 175, 55, 0.1);
+        border-radius: 8px;
+        margin: 10px 0;
+    }
+
+    .odds-box {
+        text-align: center;
+        padding: 10px 20px;
+    }
+
+    .odds-label {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 0.7rem;
+        color: #888;
+        text-transform: uppercase;
+    }
+
+    .odds-value {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 1.5rem;
+        color: #FFD700;
+        font-weight: 900;
     }
 </style>
 """)
@@ -487,10 +412,9 @@ def render_ai_status():
     st.markdown(f'<div class="world-clock">🌍 {clock_text}</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HEADER — CENTERED LOGO (90% WIDTH, REDUCED HEIGHT) + BOLD TAGLINE
+# HEADER
 # ══════════════════════════════════════════════════════════════════════════════
 def render_header():
-
     logo_path = Path("BRAND_ASSET/empire_logo_primary.png")
 
     if logo_path.exists():
@@ -499,17 +423,7 @@ def render_header():
         b64 = base64.b64encode(img_bytes).decode()
         logo_html = f'<img src="data:image/png;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
     else:
-        svg = """<<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140">
-<<defs>
-<<linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
-<<stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/>
-<<stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/>
-</linearGradient>
-</defs>
-<<rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/>
-<text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text>
-<text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text>
-</svg>"""
+        svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/><stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/></linearGradient></defs><rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/><text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text><text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text></svg>"""
         b64 = base64.b64encode(svg.encode()).decode()
         logo_html = f'<img src="data:image/svg+xml;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
 
@@ -527,12 +441,9 @@ def render_header():
 
     # LIVE / DEMO MODE BANNER
     try:
-        from empire_data_layer import EmpireDataRouter
-        router = EmpireDataRouter()
-        has_live = router.active_provider is not None
-
+        has_live = data.is_live
         if has_live:
-            provider_name = router.active_provider.name
+            provider_name = data.router.active_provider.name if data.router.active_provider else "Unknown"
             st.markdown(f"""
             <div style="background: linear-gradient(90deg, #00ff88 0%, #00cc6a 100%); 
                         color: #000; font-family: Orbitron; font-size: 1rem; 
@@ -563,7 +474,7 @@ def render_header():
         """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR — PROFESSIONAL COMMAND CENTER
+# SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
 def render_sidebar():
     with st.sidebar:
@@ -587,33 +498,21 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
 
-        sport = st.selectbox("🎯 SELECT SPORT", ["ALL SPORTS", "⚽ FOOTBALL", "🏀 NBA", "🏈 NFL", "🎾 TENNIS"])
-
         st.subheader("⚡ SYSTEM STATUS")
 
         st.markdown('<div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; margin: 8px 0;">', unsafe_allow_html=True)
 
         provider_status = []
         try:
-            from empire_data_layer import EmpireDataRouter
-            router = EmpireDataRouter()
-            statuses = router.get_provider_status()
+            statuses = data.router.get_provider_status()
             for s in statuses:
                 if "ONLINE" in s["status"]:
-                    icon = "🟢"
-                    color = "#00ff88"
+                    icon, color = "🟢", "#00ff88"
                 elif "EMPTY" in s["status"]:
-                    icon = "🟡"
-                    color = "#FFD700"
+                    icon, color = "🟡", "#FFD700"
                 else:
-                    icon = "🔴"
-                    color = "#ff4444"
-
-                status_text = s["status"]
-                if s.get("error") and "OFFLINE" in status_text:
-                    status_text += f" ({s['error'][:30]})"
-
-                provider_status.append((f"{icon} {s['name']}", status_text, color))
+                    icon, color = "🔴", "#ff4444"
+                provider_status.append((f"{icon} {s['name']}", s["status"].split(" — ")[-1], color))
         except Exception as e:
             provider_status = [("🔴 Router", f"Error: {str(e)[:40]}", "#ff4444")]
 
@@ -654,11 +553,9 @@ def render_sidebar():
                 styled_log = log_df.style.map(color_status, subset=["STATUS"])
                 st.dataframe(styled_log, use_container_width=True, hide_index=True, height=250)
             else:
-                st.info("No connection attempts yet. Refresh to test APIs.")
+                st.info("No connection attempts yet.")
         except Exception as e:
             st.warning(f"Log unavailable: {str(e)[:50]}")
-
-        return sport
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LIVE MATCH TICKER
@@ -681,243 +578,265 @@ def render_live_ticker():
     st.markdown(f'<div class="ticker"><div class="ticker-text">{ticker_text}</div></div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# LIVE API DIAGNOSTICS PANEL
+# COMPREHENSIVE MATCH DETAIL PANEL
 # ══════════════════════════════════════════════════════════════════════════════
-def render_api_diagnostics():
-    st.markdown('<div class="section-header">📡 LIVE API DIAGNOSTICS</div>', unsafe_allow_html=True)
+def render_match_detail(match_id: str, match_row: pd.Series):
+    """Render comprehensive match analysis panel when a match is selected."""
 
-    col1, col2, col3 = st.columns([1, 1, 1])
+    st.markdown(f"""
+    <div class="detail-panel">
+        <div class="detail-header">🔍 COMPREHENSIVE MATCH ANALYSIS — {match_row.get('MATCH', 'Unknown Match')}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Fetch detailed data
+    try:
+        details = data.router.get_match_details(match_id)
+    except Exception:
+        details = {"found": False}
+
+    # Top row: Match info + Odds
+    col1, col2, col3 = st.columns([2, 1, 2])
 
     with col1:
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); 
-                    border: 1px solid #333; border-radius: 10px; padding: 15px;">
-            <div style="color: #D4AF37; font-family: Orbitron; font-size: 0.8rem; margin-bottom: 8px;">
-                🔑 API KEY STATUS
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        keys = [
-            ("API-SPORTS", "API_SPORTS_KEY"),
-            ("The Odds API", "ODDS_API_KEY"),
-            ("Sportmonks", "SPORTMONKS_KEY"),
-            ("TheSportsDB", "TheSportDB_API_key"),
-            ("MySportsFeeds", "MYSPORTSFEEDS_KEY"),
-            ("Football-Data", "FOOTBALL_DATA_KEY"),
-        ]
-
-        for name, env_var in keys:
-            key_val = os.getenv(env_var, "")
-            if key_val and len(key_val) > 5:
-                st.markdown(f'<div style="color: #00ff88; font-size: 0.75rem; font-family: Rajdhani;">🟢 {name}: Key present ({len(key_val)} chars)</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div style="color: #ff4444; font-size: 0.75rem; font-family: Rajdhani;">🔴 {name}: MISSING or INVALID</div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); 
-                    border: 1px solid #333; border-radius: 10px; padding: 15px;">
-            <div style="color: #D4AF37; font-family: Orbitron; font-size: 0.8rem; margin-bottom: 8px;">
-                🌐 NETWORK STATUS
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        import socket
-        try:
-            socket.create_connection(("8.8.8.8", 53), timeout=3)
-            st.markdown('<div style="color: #00ff88; font-size: 0.75rem; font-family: Rajdhani;">🟢 Internet: Connected</div>', unsafe_allow_html=True)
-        except:
-            st.markdown('<div style="color: #ff4444; font-size: 0.75rem; font-family: Rajdhani;">🔴 Internet: Disconnected</div>', unsafe_allow_html=True)
-
-        try:
-            import requests
-            r = requests.get("https://api.github.com", timeout=5)
-            st.markdown(f'<div style="color: #00ff88; font-size: 0.75rem; font-family: Rajdhani;">🟢 HTTPS: Working ({r.status_code})</div>', unsafe_allow_html=True)
-        except:
-            st.markdown('<div style="color: #ff4444; font-size: 0.75rem; font-family: Rajdhani;">🔴 HTTPS: Blocked</div>', unsafe_allow_html=True)
-
-        st.markdown('<div style="color: #888; font-size: 0.7rem; margin-top: 8px; font-family: Rajdhani;">Last checked: just now</div>', unsafe_allow_html=True)
-
-    with col3:
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); 
-                    border: 1px solid #333; border-radius: 10px; padding: 15px;">
-            <div style="color: #D4AF37; font-family: Orbitron; font-size: 0.8rem; margin-bottom: 8px;">
-                📊 DATA SOURCE HEALTH
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        try:
-            from empire_data_layer import EmpireDataRouter
-            router = EmpireDataRouter()
-            statuses = router.get_provider_status()
-
-            for s in statuses:
-                if "ONLINE" in s["status"]:
-                    icon, color = "🟢", "#00ff88"
-                elif "EMPTY" in s["status"]:
-                    icon, color = "🟡", "#FFD700"
-                else:
-                    icon, color = "🔴", "#ff4444"
-
-                resp_time = s.get("response_time_ms", "-")
-                resp_str = f" ({resp_time}ms)" if resp_time != "-" else ""
-
-                st.markdown(f'<div style="color: {color}; font-size: 0.75rem; font-family: Rajdhani;">{icon} {s["name"]}: {s["status"].split(" — ")[-1]}{resp_str}</div>', unsafe_allow_html=True)
-        except Exception as e:
-            st.markdown(f'<div style="color: #ff4444; font-size: 0.75rem;">⚠️ Health check error: {str(e)[:40]}</div>', unsafe_allow_html=True)
-
-    st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# LIVE MATCH CARDS
-# ══════════════════════════════════════════════════════════════════════════════
-def render_live_matches():
-    st.markdown('<div class="section-header">🔴 LIVE MATCHES NOW</div>', unsafe_allow_html=True)
-
-    try:
-        live_df = data.get_live_matches_df()
-        if not live_df.empty:
-            live_matches = live_df.head(8).to_dict('records')
-            for match in live_matches:
-                match.setdefault('league', match.get('LEAGUE', 'Unknown'))
-                match.setdefault('home', match.get('MATCH', '').split(' vs ')[0] if ' vs ' in match.get('MATCH', '') else 'Home')
-                match.setdefault('away', match.get('MATCH', '').split(' vs ')[1] if ' vs ' in match.get('MATCH', '') else 'Away')
-                match.setdefault('score', match.get('SCORE', 'vs'))
-                match.setdefault('time', match.get('MIN', 'LIVE'))
-                match.setdefault('odds', match.get('HOME', '-'))
-                match.setdefault('ev', match.get('EV', '-'))
-                match.setdefault('prediction', match.get('PREDICTION', 'Analyzing...'))
-        else:
-            live_matches = []
-    except Exception as e:
-        st.warning(f"⚠️ Live feed connecting... ({str(e)[:50]})")
-        live_matches = []
-
-    if not live_matches:
-        st.info("🔌 Live feed initializing. Matches will appear once data streams connect.")
-        return
-
-    cols = st.columns(2)
-    for idx, match in enumerate(live_matches):
-        with cols[idx % 2]:
+        st.markdown("##### 📋 MATCH INFORMATION")
+        info_data = {
+            "League": match_row.get('LEAGUE', 'N/A'),
+            "Status": match_row.get('STATUS', 'N/A'),
+            "Score": match_row.get('SCORE', 'vs'),
+            "Minute": match_row.get('MIN', '-'),
+            "Prediction": match_row.get('PREDICTION', 'Analyzing...'),
+            "Confidence": match_row.get('CONF', '-'),
+            "Signal": match_row.get('SIGNAL', '-'),
+        }
+        for label, value in info_data.items():
             st.markdown(f"""
-            <div class="match-card">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="color: #888; font-size: 0.8rem;">{match['league']}</span>
-                    <span class="match-live">● LIVE {match['time']}</span>
-                </div>
-                <div style="font-size: 1.3rem; font-weight: 700; color: #FFD700; margin: 10px 0;">
-                    {match['home']} <span style="color: #fff;">{match['score']}</span> {match['away']}
-                </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-                    <span style="color: #00ff88;">📊 {match['prediction']}</span>
-                    <span style="color: #D4AF37;">⚡ EV: {match['ev']}</span>
-                </div>
-                <div style="margin-top: 8px; font-size: 0.8rem; color: #888;">
-                    Best Odds: <span style="color: #FFD700;">{match['odds']}</span>
-                </div>
+            <div class="stat-row">
+                <span class="stat-label">{label}</span>
+                <span class="stat-value">{value}</span>
             </div>
             """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PANDAS STYLER — Forces dark cell backgrounds inside st.dataframe
-# ══════════════════════════════════════════════════════════════════════════════
-def style_dark_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply dark gold theme styling for st.dataframe rendering."""
-    return df.style.set_properties(**{
-        'background-color': '#1a1a2e',
-        'color': '#e0e0e0',
-        'border-color': '#333',
-        'font-family': 'Rajdhani, sans-serif'
-    }).set_table_styles([
-        {'selector': 'th', 'props': [
-            ('background', 'linear-gradient(135deg, #D4AF37 0%, #B8860B 100%)'),
-            ('color', '#000'),
-            ('font-family', 'Orbitron, sans-serif'),
-            ('font-weight', '700'),
-            ('text-transform', 'uppercase'),
-            ('letter-spacing', '1px'),
-            ('border-bottom', '2px solid #FFD700')
-        ]},
-        {'selector': 'td', 'props': [
-            ('background-color', '#1a1a2e'),
-            ('color', '#e0e0e0'),
-            ('border-bottom', '1px solid #333')
-        ]},
-        {'selector': 'tr:hover td', 'props': [
-            ('background', 'rgba(212, 175, 55, 0.15)'),
-            ('color', '#FFD700')
-        ]}
-    ])
+    with col2:
+        st.markdown("##### ⚖️ CURRENT ODDS")
+        home_odds = match_row.get('HOME', '-')
+        draw_odds = match_row.get('DRAW', '-')
+        away_odds = match_row.get('AWAY', '-')
+
+        st.markdown(f"""
+        <div class="odds-row">
+            <div class="odds-box">
+                <div class="odds-label">1 (Home)</div>
+                <div class="odds-value">{home_odds}</div>
+            </div>
+            <div class="odds-box">
+                <div class="odds-label">X (Draw)</div>
+                <div class="odds-value">{draw_odds}</div>
+            </div>
+            <div class="odds-box">
+                <div class="odds-label">2 (Away)</div>
+                <div class="odds-value">{away_odds}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        ev_val = match_row.get('EV', '-')
+        st.markdown(f"""
+        <div style="text-align: center; padding: 10px; background: rgba(0,255,136,0.1); border-radius: 8px; margin-top: 10px;">
+            <span style="font-family: Orbitron; color: #00ff88; font-size: 1.2rem;">EV: {ev_val}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("##### 📊 LIVE STATISTICS")
+        if details.get("statistics"):
+            stats = details["statistics"]
+            # Parse API-SPORTS stats format
+            try:
+                response = stats.get("response", [])
+                if response:
+                    team_stats = response[0].get("statistics", [])
+                    for stat in team_stats:
+                        stat_type = stat.get("type", "Unknown")
+                        home_val = stat.get("value", "-")
+                        away_val = stat.get("value", "-")  # Need to parse both teams
+                        st.markdown(f"""
+                        <div class="stat-row">
+                            <span class="stat-label">{stat_type}</span>
+                            <span class="stat-value">{home_val} - {away_val}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("Statistics format not recognized")
+            except Exception:
+                st.info("Statistics parsing error")
+        else:
+            st.info("📡 Live statistics not yet available for this match")
+
+    # Bottom row: Odds comparison + Predictions
+    st.markdown("<hr style='border-color: #333; margin: 15px 0;'>", unsafe_allow_html=True)
+
+    col4, col5 = st.columns(2)
+
+    with col4:
+        st.markdown("##### 📈 ODDS COMPARISON")
+        try:
+            odds_df = data.get_odds_comparison(match_id)
+            if not odds_df.empty:
+                st.dataframe(odds_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No odds comparison data available")
+        except Exception:
+            st.info("Odds comparison unavailable")
+
+    with col5:
+        st.markdown("##### 🔮 AI PREDICTIONS")
+        if details.get("predictions"):
+            pred = details["predictions"]
+            if isinstance(pred, dict):
+                home_prob = pred.get("home_win_prob", "N/A")
+                draw_prob = pred.get("draw_prob", "N/A")
+                away_prob = pred.get("away_win_prob", "N/A")
+
+                pred_data = {
+                    "Home Win": f"{home_prob}%" if home_prob != "N/A" else "Analyzing...",
+                    "Draw": f"{draw_prob}%" if draw_prob != "N/A" else "Analyzing...",
+                    "Away Win": f"{away_prob}%" if away_prob != "N/A" else "Analyzing...",
+                }
+                for label, value in pred_data.items():
+                    st.markdown(f"""
+                    <div class="stat-row">
+                        <span class="stat-label">{label}</span>
+                        <span class="stat-value">{value}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("Prediction data format not recognized")
+        else:
+            st.info("🔮 AI predictions not yet available for this match")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# VALUE OPPORTUNITIES — DARK TABLE
+# MAIN ARENA VIEW — SPORT TABS + LEAGUE FILTER + MATCH STATUS + MATCH TABLE
 # ══════════════════════════════════════════════════════════════════════════════
-def render_value_opportunities(sport_filter):
-    st.markdown('<div class="section-header">⚜ ACTIVE VALUE OPPORTUNITIES</div>', unsafe_allow_html=True)
+def render_arena():
+    st.markdown('<div class="section-header">🏟️ EMPIRE ARENA</div>', unsafe_allow_html=True)
 
-    try:
-        opportunities = data.get_value_opportunities_df()
+    # Sport category tabs
+    sport_tabs = st.tabs(["⚽ FOOTBALL", "🏀 BASKETBALL", "🏈 NFL", "🎾 TENNIS", "🏒 NHL", "🏀 NBA"])
 
-        if sport_filter != "ALL SPORTS":
-            sport_name = sport_filter.split()[-1]
-            if "SPORT" in opportunities.columns:
-                opportunities = opportunities[opportunities["SPORT"] == sport_name]
+    sport_mapping = {
+        "⚽ FOOTBALL": "football",
+        "🏀 BASKETBALL": "basketball",
+        "🏈 NFL": "americanfootball",
+        "🎾 TENNIS": "tennis",
+        "🏒 NHL": "icehockey",
+        "🏀 NBA": "basketball"
+    }
 
-        if opportunities.empty:
-            st.info("🔍 No value opportunities detected. Markets are tight — waiting for edge.")
-            return
+    for tab, sport_name in zip(sport_tabs, sport_mapping.keys()):
+        with tab:
+            sport_key = sport_mapping[sport_name]
 
-    except Exception as e:
-        st.warning(f"⚠️ Live data temporarily unavailable. ({str(e)[:50]})")
-        return
+            # Filters row
+            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2, 2, 2, 1])
 
-    st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-    st.dataframe(style_dark_df(opportunities), use_container_width=True, hide_index=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+            with filter_col1:
+                # League dropdown — populated from available leagues
+                try:
+                    leagues = data.router.get_leagues(sport_key)
+                    if not leagues:
+                        leagues = ["All Leagues"]
+                except Exception:
+                    leagues = ["All Leagues"]
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PERFORMANCE HISTORY — DARK CHART
-# ══════════════════════════════════════════════════════════════════════════════
-def render_performance_history():
-    st.markdown('<div class="section-header">📈 PERFORMANCE HISTORY</div>', unsafe_allow_html=True)
+                selected_league = st.selectbox(
+                    "🏆 SELECT LEAGUE",
+                    options=leagues,
+                    key=f"league_{sport_key}"
+                )
 
-    st.info("📊 Performance history requires database integration. Connect your PostgreSQL instance to populate this chart with real trading data.")
+            with filter_col2:
+                status_options = ["ALL", "LIVE", "SCHEDULED", "FINISHED", "HALFTIME"]
+                selected_status = st.selectbox(
+                    "📊 MATCH STATUS",
+                    options=status_options,
+                    key=f"status_{sport_key}"
+                )
 
-    fig = go.Figure()
-    fig.update_layout(
-        title=dict(text="BANKROLL EVOLUTION", font=dict(family="Orbitron", size=20, color="#FFD700")),
-        xaxis_title="DATE", yaxis_title="BANKROLL ($)",
-        template="plotly_dark", height=450,
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(26, 26, 46, 0.5)",
-        font=dict(family="Rajdhani", color="#e0e0e0")
-    )
-    st.plotly_chart(fig, use_container_width=True)
+            with filter_col3:
+                view_options = ["📋 TABLE VIEW", "🃏 CARD VIEW"]
+                selected_view = st.selectbox(
+                    "👁️ DISPLAY MODE",
+                    options=view_options,
+                    key=f"view_{sport_key}"
+                )
 
-# ══════════════════════════════════════════════════════════════════════════════
-# MODEL PERFORMANCE — DARK TABLE
-# ══════════════════════════════════════════════════════════════════════════════
-def render_model_performance():
-    st.markdown('<div class="section-header">🧠 AI MODEL PERFORMANCE</div>', unsafe_allow_html=True)
+            with filter_col4:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🔄 REFRESH", key=f"refresh_{sport_key}", use_container_width=True):
+                    st.session_state.last_refresh = time.time()
+                    st.cache_data.clear()
+                    st.rerun()
 
-    st.info("🧠 Model performance metrics require evaluation pipeline integration. Connect your model registry to display live accuracy, log loss, and Sharpe ratio data.")
+            # Fetch matches based on filters
+            try:
+                if selected_status == "LIVE":
+                    matches_df = data.router.get_live_matches(sport_key)
+                elif selected_status == "SCHEDULED":
+                    matches_df = data.get_upcoming_matches_df()
+                else:
+                    matches_df = data.router.get_matches_by_status(selected_status, sport_key)
 
-    model_metrics = pd.DataFrame({
-        "MODEL": [],
-        "LOG LOSS": [],
-        "ACCURACY": [],
-        "ROC-AUC": [],
-        "SHARPE": [],
-        "STATUS": []
-    })
+                # Filter by league if selected
+                if selected_league != "All Leagues" and not matches_df.empty:
+                    matches_df = matches_df[matches_df["LEAGUE"] == selected_league]
 
-    st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-    st.dataframe(style_dark_df(model_metrics), use_container_width=True, hide_index=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error fetching matches: {str(e)[:100]}")
+                matches_df = pd.DataFrame()
+
+            # Display matches
+            if matches_df.empty:
+                st.info(f"🔍 No {selected_status.lower()} matches found for {sport_name}. Try another status or refresh.")
+            else:
+                st.markdown(f"<div style='color: #888; font-size: 0.85rem; margin-bottom: 10px;'>📊 Showing {len(matches_df)} matches</div>", unsafe_allow_html=True)
+
+                if selected_view == "📋 TABLE VIEW":
+                    # Table view with clickable rows
+                    # Hide MATCH_ID from display but keep it for selection
+                    display_df = matches_df.drop(columns=["MATCH_ID"]) if "MATCH_ID" in matches_df.columns else matches_df
+
+                    st.dataframe(
+                        display_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        on_select="rerun",
+                        selection_mode="single-row",
+                        key=f"match_table_{sport_key}"
+                    )
+
+                    # Check if a row was selected
+                    selection = st.session_state.get(f"match_table_{sport_key}")
+                    if selection and "rows" in selection and selection["rows"]:
+                        selected_idx = selection["rows"][0]
+                        if selected_idx < len(matches_df):
+                            selected_match = matches_df.iloc[selected_idx]
+                            match_id = selected_match.get("MATCH_ID", "")
+                            if match_id:
+                                render_match_detail(match_id, selected_match)
+
+                else:  # CARD VIEW
+                    cols = st.columns(2)
+                    for idx, (_, match) in enumerate(matches_df.iterrows()):
+                        with cols[idx % 2]:
+                            with st.expander(f"{match.get('MATCH', 'vs')} — {match.get('STATUS', '')}", expanded=False):
+                                match_id = match.get("MATCH_ID", "")
+                                if match_id:
+                                    render_match_detail(match_id, match)
+                                else:
+                                    st.info("Match details unavailable")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PREDICTIONS CENTER
@@ -931,91 +850,68 @@ def render_predictions():
         try:
             upcoming_df = data.get_upcoming_matches_df()
             if not upcoming_df.empty:
-                st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-                st.dataframe(style_dark_df(upcoming_df), use_container_width=True, hide_index=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.dataframe(upcoming_df, use_container_width=True, hide_index=True)
             else:
-                st.info("🔮 No upcoming predictions available. Check API connections or wait for next fixture window.")
+                st.info("🔮 No upcoming predictions available.")
         except Exception:
-            st.info("🔮 No upcoming predictions available. Check API connections or wait for next fixture window.")
+            st.info("🔮 No upcoming predictions available.")
 
     with tab2:
-        st.info("📜 Prediction history requires database integration. Connect your PostgreSQL instance to populate historical prediction results.")
-        history = pd.DataFrame({
-            "DATE": [],
-            "MATCH": [],
-            "PREDICTED": [],
-            "RESULT": [],
-            "P/L": []
-        })
-        st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-        st.dataframe(style_dark_df(history), use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.info("📜 Prediction history requires database integration.")
+        history = pd.DataFrame({"DATE": [], "MATCH": [], "PREDICTED": [], "RESULT": [], "P/L": []})
+        st.dataframe(history, use_container_width=True, hide_index=True)
 
     with tab3:
-        st.info("⚙️ Model calibration analysis — comparing predicted probabilities vs actual outcomes. Requires historical database.")
-        cal_data = pd.DataFrame({
-            "BIN": [],
-            "PREDICTED": [],
-            "ACTUAL": [],
-            "BETS": []
-        })
-        st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-        st.dataframe(style_dark_df(cal_data), use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.info("⚙️ Model calibration analysis.")
+        cal_data = pd.DataFrame({"BIN": [], "PREDICTED": [], "ACTUAL": [], "BETS": []})
+        st.dataframe(cal_data, use_container_width=True, hide_index=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PERFORMANCE ANALYTICS — SPORT BREAKDOWN + MONTHLY
+# ANALYTICS
 # ══════════════════════════════════════════════════════════════════════════════
-def render_performance_analytics():
+def render_analytics():
     st.markdown('<div class="section-header">📊 PERFORMANCE ANALYTICS</div>', unsafe_allow_html=True)
-
-    st.info("📊 Performance analytics require database integration. Connect your PostgreSQL instance to populate sport breakdown and monthly performance data.")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown('<div class="section-header" style="font-size:1rem;">⚽ SPORT BREAKDOWN</div>', unsafe_allow_html=True)
-        breakdown = pd.DataFrame({
-            "SPORT": [],
-            "BETS": [],
-            "WIN RATE": [],
-            "PROFIT": [],
-            "ROI": []
-        })
-        st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-        st.dataframe(style_dark_df(breakdown), use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown('<div class="section-header" style="font-size:1rem;">📅 MONTHLY PERFORMANCE</div>', unsafe_allow_html=True)
-        fig = go.Figure()
-        fig.update_layout(
-            template="plotly_dark", height=350,
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(26, 26, 46, 0.5)",
-            font=dict(family="Rajdhani", color="#e0e0e0"),
-            xaxis_title="MONTH", yaxis_title="PROFIT ($)"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    st.info("📊 Performance analytics require database integration.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     render_header()
-    sport = render_sidebar()
+    render_sidebar()
     render_live_ticker()
 
+    # Auto-refresh control
+    col_refresh, col_status = st.columns([1, 4])
+    with col_refresh:
+        if st.button("🔄 FORCE REFRESH", use_container_width=True):
+            st.session_state.last_refresh = time.time()
+            st.cache_data.clear()
+            st.rerun()
+
+    with col_status:
+        next_refresh = max(0, REFRESH_INTERVAL - elapsed)
+        status_color = "#00ff88" if data.is_live else "#FFD700"
+        status_text = "LIVE" if data.is_live else "DEMO"
+        st.markdown(
+            f'<div style="color: {status_color}; font-family: Orbitron; font-size: 0.8rem; '
+            f'padding-top: 8px;">● {status_text} | Next auto-refresh in {int(next_refresh)}s</div>',
+            unsafe_allow_html=True
+        )
+
+    # Auto-refresh trigger
+    if elapsed >= REFRESH_INTERVAL:
+        st.session_state.last_refresh = time.time()
+        st.cache_data.clear()
+        st.rerun()
+
+    # Main navigation
     page = st.radio("", ["🏟️ ARENA", "🎯 PREDICTIONS", "📊 ANALYTICS"], 
                     horizontal=True, label_visibility="collapsed")
 
     if "ARENA" in page:
-        render_api_diagnostics()
-        render_live_matches()
-        render_value_opportunities(sport)
-        render_performance_history()
-        render_model_performance()
+        render_arena()
     elif "PREDICTIONS" in page:
         render_predictions()
     else:
-        render_performance_analytics()
+        render_analytics()
