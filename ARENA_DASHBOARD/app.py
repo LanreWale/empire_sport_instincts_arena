@@ -718,14 +718,109 @@ def render_match_detail(match_id: str, match_row: pd.Series):
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MAIN ARENA VIEW — SPORT TABS + LEAGUE FILTER + MATCH STATUS + MATCH TABLE
+# MAIN ARENA VIEW — SPORT SELECTOR + LEAGUE FILTER + MATCH STATUS + MATCH TABLE
 # ══════════════════════════════════════════════════════════════════════════════
 
-def render_sport_tab(tab_name: str, sport_key: str):
-    """Render content for a single sport tab. Called only when tab is active."""
+SPORT_OPTIONS = {
+    "⚽ FOOTBALL": "football",
+    "🏀 BASKETBALL": "basketball",
+    "🏈 NFL": "americanfootball",
+    "🎾 TENNIS": "tennis",
+    "🏒 NHL": "icehockey",
+    "🏀 NBA": "basketball_nba"
+}
 
-    # Use tab_name for unique keys (includes emoji, always unique)
-    key_prefix = tab_name.replace(" ", "_").replace("⚽", "f").replace("🏀", "b").replace("🏈", "nfl").replace("🎾", "t").replace("🏒", "nhl")
+
+def render_match_table(matches_df: pd.DataFrame, view_mode: str, key_prefix: str):
+    """Render matches in table or card view."""
+    if matches_df.empty:
+        return
+
+    if view_mode == "📋 TABLE VIEW":
+        # Use st.table for better CSS control, or styled dataframe
+        display_df = matches_df.drop(columns=["MATCH_ID"]) if "MATCH_ID" in matches_df.columns else matches_df
+
+        # Apply dark styling via Pandas Styler
+        styled = display_df.style.set_properties(**{
+            'background-color': '#1a1a2e',
+            'color': '#FFD700',
+            'font-family': 'Rajdhani, sans-serif',
+            'font-size': '0.95rem',
+            'text-align': 'center'
+        }).set_table_styles([
+            {'selector': 'th', 'props': [
+                ('background', 'linear-gradient(135deg, #D4AF37 0%, #B8860B 100%)'),
+                ('color', '#000'),
+                ('font-family', 'Orbitron, sans-serif'),
+                ('font-weight', '900'),
+                ('text-transform', 'uppercase'),
+                ('letter-spacing', '1px'),
+                ('padding', '12px'),
+                ('border', '1px solid #D4AF37')
+            ]},
+            {'selector': 'td', 'props': [
+                ('background-color', '#1a1a2e'),
+                ('color', '#FFD700'),
+                ('border-bottom', '1px solid #2a2a3e'),
+                ('padding', '10px')
+            ]},
+            {'selector': 'tr:nth-child(even) td', 'props': [
+                ('background-color', '#151525')
+            ]},
+            {'selector': 'tr:hover td', 'props': [
+                ('background', 'rgba(212, 175, 55, 0.2)'),
+                ('color', '#FFFFFF'),
+                ('font-weight', '700')
+            ]}
+        ])
+
+        st.table(styled)
+
+        # Selection via selectbox below table
+        match_options = [f"{row['MATCH']} ({row['STATUS']})" for _, row in matches_df.iterrows()]
+        selected = st.selectbox("🔍 CLICK TO VIEW MATCH DETAILS", options=["— Select a match —"] + match_options, key=f"select_{key_prefix}")
+
+        if selected != "— Select a match —":
+            idx = match_options.index(selected)
+            selected_match = matches_df.iloc[idx]
+            match_id = selected_match.get("MATCH_ID", "")
+            if match_id:
+                render_match_detail(match_id, selected_match)
+
+    else:  # CARD VIEW
+        for idx, (_, match) in enumerate(matches_df.iterrows()):
+            with st.expander(f"{match.get('MATCH', 'vs')} — {match.get('STATUS', '')}", expanded=False):
+                match_id = match.get("MATCH_ID", "")
+                if match_id:
+                    render_match_detail(match_id, match)
+                else:
+                    st.info("Match details unavailable")
+
+
+def render_arena():
+    st.markdown('<div class="section-header">🏟️ EMPIRE ARENA</div>', unsafe_allow_html=True)
+
+    # Sport selector — horizontal radio buttons (cleaner than tabs, no duplicate widget issues)
+    sport_names = list(SPORT_OPTIONS.keys())
+
+    # Use session state to remember selection
+    if 'selected_sport' not in st.session_state:
+        st.session_state.selected_sport = sport_names[0]
+
+    selected_sport = st.radio(
+        "",
+        options=sport_names,
+        index=sport_names.index(st.session_state.selected_sport),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="sport_selector"
+    )
+    st.session_state.selected_sport = selected_sport
+
+    sport_key = SPORT_OPTIONS[selected_sport]
+    key_prefix = selected_sport.replace(" ", "_").replace("⚽", "f").replace("🏀", "b").replace("🏈", "nfl").replace("🎾", "t").replace("🏒", "nhl")
+
+    st.markdown("<hr style='border-color: #333; margin: 15px 0;'>", unsafe_allow_html=True)
 
     # Filters row
     filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2, 2, 2, 1])
@@ -784,64 +879,10 @@ def render_sport_tab(tab_name: str, sport_key: str):
 
     # Display
     if matches_df.empty:
-        st.info(f"🔍 No {selected_status.lower()} matches found for {tab_name}. Try another status or refresh.")
-        return
-
-    st.markdown(f"<div style='color: #888; font-size: 0.85rem; margin-bottom: 10px;'>📊 Showing {len(matches_df)} matches</div>", unsafe_allow_html=True)
-
-    if selected_view == "📋 TABLE VIEW":
-        display_df = matches_df.drop(columns=["MATCH_ID"]) if "MATCH_ID" in matches_df.columns else matches_df
-
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row",
-            key=f"match_table_{key_prefix}"
-        )
-
-        selection = st.session_state.get(f"match_table_{key_prefix}")
-        if selection and "rows" in selection and selection["rows"]:
-            selected_idx = selection["rows"][0]
-            if selected_idx < len(matches_df):
-                selected_match = matches_df.iloc[selected_idx]
-                match_id = selected_match.get("MATCH_ID", "")
-                if match_id:
-                    render_match_detail(match_id, selected_match)
-
-    else:  # CARD VIEW
-        cols = st.columns(2)
-        for idx, (_, match) in enumerate(matches_df.iterrows()):
-            with cols[idx % 2]:
-                with st.expander(f"{match.get('MATCH', 'vs')} — {match.get('STATUS', '')}", expanded=False):
-                    match_id = match.get("MATCH_ID", "")
-                    if match_id:
-                        render_match_detail(match_id, match)
-                    else:
-                        st.info("Match details unavailable")
-
-
-def render_arena():
-    st.markdown('<div class="section-header">🏟️ EMPIRE ARENA</div>', unsafe_allow_html=True)
-
-    # Sport tabs — each maps to a unique key prefix
-    sport_tabs = {
-        "⚽ FOOTBALL": "football",
-        "🏀 BASKETBALL": "basketball", 
-        "🏈 NFL": "americanfootball",
-        "🎾 TENNIS": "tennis",
-        "🏒 NHL": "icehockey",
-        "🏀 NBA": "basketball_nba"  # Unique key even though same sport
-    }
-
-    tab_names = list(sport_tabs.keys())
-    tabs = st.tabs(tab_names)
-
-    for tab, tab_name in zip(tabs, tab_names):
-        with tab:
-            sport_key = sport_tabs[tab_name]
-            render_sport_tab(tab_name, sport_key)
+        st.info(f"🔍 No {selected_status.lower()} matches found for {selected_sport}. Try another status or refresh.")
+    else:
+        st.markdown(f"<div style='color: #888; font-size: 0.85rem; margin-bottom: 10px;'>📊 Showing {len(matches_df)} matches</div>", unsafe_allow_html=True)
+        render_match_table(matches_df, selected_view, key_prefix)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PREDICTIONS CENTER
