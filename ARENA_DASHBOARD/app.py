@@ -668,15 +668,21 @@ def render_sidebar():
 # LIVE MATCH TICKER
 # ══════════════════════════════════════════════════════════════════════════════
 def render_live_ticker():
-    matches = [
-        "⚽ PREMIER LEAGUE: Man City 2-1 Arsenal (LIVE)",
-        "🏀 NBA PLAYOFFS: Lakers 108-102 Warriors (Q4)",
-        "🎾 ROLAND GARROS: Alcaraz vs Djokovic (SET 3)",
-        "🏈 NFL: Chiefs 21-14 Ravens (Q3)",
-        "⚽ LA LIGA: Real Madrid 0-0 Barcelona (HT)",
-        "🏀 NBA: Celtics 95-89 Heat (Q4)",
-    ]
-    ticker_text = "    ★    ".join(matches)
+    # Fetch live matches for ticker instead of hard-coded data
+    try:
+        live_df = data.get_live_matches_df()
+        if not live_df.empty:
+            matches = []
+            for _, row in live_df.head(6).iterrows():
+                status_icon = "🔴" if "LIVE" in str(row.get("STATUS", "")) else "⏳"
+                match_text = f"{status_icon} {row.get('LEAGUE', 'Unknown')}: {row.get('MATCH', 'vs')} ({row.get('STATUS', '')})"
+                matches.append(match_text)
+            ticker_text = "    ★    ".join(matches)
+        else:
+            ticker_text = "📡 Connecting to live data feeds...    ★    🔄 Refreshing match data..."
+    except Exception:
+        ticker_text = "📡 Connecting to live data feeds...    ★    🔄 Refreshing match data..."
+
     st.markdown(f'<div class="ticker"><div class="ticker-text">{ticker_text}</div></div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -697,13 +703,13 @@ def render_api_diagnostics():
         </div>
         """, unsafe_allow_html=True)
 
+        # Only check keys that actually exist in the data layer
         keys = [
             ("API-SPORTS", "API_SPORTS_KEY"),
             ("The Odds API", "ODDS_API_KEY"),
             ("Sportmonks", "SPORTMONKS_KEY"),
             ("TheSportsDB", "TheSportDB_API_key"),
-            ("MySportsFeeds", "MYSPORTSFEEDS_KEY"),
-            ("Football-Data", "FOOTBALL_DATA_KEY"),
+            ("The Rundown", "RUNDOWN_KEY"),
         ]
 
         for name, env_var in keys:
@@ -778,7 +784,7 @@ def render_api_diagnostics():
 def render_live_matches():
     st.markdown('<div class="section-header">🔴 LIVE MATCHES NOW</div>', unsafe_allow_html=True)
 
-    # Fetch live matches from EMPIRE data layer
+    # Fetch live matches from EMPIRE data layer — NO MOCK DATA
     try:
         live_df = data.get_live_matches_df()
         if not live_df.empty:
@@ -863,43 +869,22 @@ def style_dark_df(df: pd.DataFrame) -> pd.DataFrame:
 def render_value_opportunities(sport_filter):
     st.markdown('<div class="section-header">⚜ ACTIVE VALUE OPPORTUNITIES</div>', unsafe_allow_html=True)
 
-    # Fetch live value opportunities from EMPIRE data layer
-    using_mock = False
+    # Fetch live value opportunities from EMPIRE data layer — NO MOCK DATA
     try:
         opportunities = data.get_value_opportunities_df()
-
-        # Detect if we got mock fallback data (check for known mock signatures)
-        if opportunities.empty or (len(opportunities) == 1 and opportunities.iloc[0].get("MATCH") == "Connecting to data feeds..."):
-            using_mock = True
 
         if sport_filter != "ALL SPORTS":
             sport_name = sport_filter.split()[-1]
             if "SPORT" in opportunities.columns:
                 opportunities = opportunities[opportunities["SPORT"] == sport_name]
 
-        if opportunities.empty and not using_mock:
+        if opportunities.empty:
             st.info("🔍 No value opportunities detected. Markets are tight — waiting for edge.")
             return
 
     except Exception as e:
-        using_mock = True
-        st.warning(f"⚠️ Live data temporarily unavailable. Using fallback. ({str(e)[:50]})")
-        opportunities = pd.DataFrame({
-            "TIME": ["--:--"],
-            "LEAGUE": ["Loading..."],
-            "MATCH": ["Connecting to data feeds..."],
-            "STATUS": ["⏳"],
-            "HOME": ["-"],
-            "DRAW": ["-"],
-            "AWAY": ["-"],
-            "PREDICTION": ["Initializing..."],
-            "EV": ["-"],
-            "CONF": ["-"],
-            "SIGNAL": ["⚪"],
-        })
-
-    if using_mock:
-        st.markdown('<div style="background: linear-gradient(90deg, #B8860B 0%, #FFD700 100%); color: #000; font-family: Orbitron; font-size: 0.8rem; padding: 8px 16px; border-radius: 6px; text-align: center; margin-bottom: 10px; font-weight: 700;">⚠️ DEMO MODE — Add API keys to .env for live data</div>', unsafe_allow_html=True)
+        st.warning(f"⚠️ Live data temporarily unavailable. ({str(e)[:50]})")
+        return
 
     st.markdown('<div class="dark-container">', unsafe_allow_html=True)
     st.dataframe(style_dark_df(opportunities), use_container_width=True, hide_index=True)
@@ -911,17 +896,12 @@ def render_value_opportunities(sport_filter):
 def render_performance_history():
     st.markdown('<div class="section-header">📈 PERFORMANCE HISTORY</div>', unsafe_allow_html=True)
 
-    dates = pd.date_range(end=datetime.now(), periods=30, freq="D")
-    bankroll = [10000 * (1.0015 ** i) + random.uniform(-50, 50) for i in range(30)]
+    # NOTE: This requires a database connection for real historical data.
+    # For now, show empty state with instructions.
+    st.info("📊 Performance history requires database integration. Connect your PostgreSQL instance to populate this chart with real trading data.")
 
+    # Placeholder chart structure (no fake data points)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=dates, y=bankroll, mode="lines", name="Bankroll",
-        line=dict(color="#FFD700", width=3),
-        fill="tozeroy", fillcolor="rgba(212, 175, 55, 0.1)"
-    ))
-    fig.add_hline(y=10000, line_dash="dash", line_color="#ff4444", line_width=2, annotation_text="BASELINE")
-
     fig.update_layout(
         title=dict(text="BANKROLL EVOLUTION", font=dict(family="Orbitron", size=20, color="#FFD700")),
         xaxis_title="DATE", yaxis_title="BANKROLL ($)",
@@ -937,59 +917,23 @@ def render_performance_history():
 def render_model_performance():
     st.markdown('<div class="section-header">🧠 AI MODEL PERFORMANCE</div>', unsafe_allow_html=True)
 
+    # NOTE: Model metrics should come from model evaluation pipeline.
+    # For now, show empty state.
+    st.info("🧠 Model performance metrics require evaluation pipeline integration. Connect your model registry to display live accuracy, log loss, and Sharpe ratio data.")
+
+    # Empty dataframe with correct schema
     model_metrics = pd.DataFrame({
-        "MODEL": ["XGBoost v3.2", "Transformer v2.1", "Bayesian v1.8", "Ensemble v4.0", "LSTM v2.0"],
-        "LOG LOSS": [0.48, 0.52, 0.55, 0.45, 0.50],
-        "ACCURACY": ["56.2%", "54.8%", "53.1%", "57.5%", "55.3%"],
-        "ROC-AUC": ["0.58", "0.56", "0.54", "0.60", "0.57"],
-        "SHARPE": ["0.92", "0.85", "0.78", "1.05", "0.88"],
-        "STATUS": ["🟢 ACTIVE", "🟢 ACTIVE", "🟡 TUNING", "🟢 ACTIVE", "🟢 ACTIVE"]
+        "MODEL": [],
+        "LOG LOSS": [],
+        "ACCURACY": [],
+        "ROC-AUC": [],
+        "SHARPE": [],
+        "STATUS": []
     })
 
     st.markdown('<div class="dark-container">', unsafe_allow_html=True)
     st.dataframe(style_dark_df(model_metrics), use_container_width=True, hide_index=True)
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PERFORMANCE ANALYTICS — SPORT BREAKDOWN + MONTHLY
-# ══════════════════════════════════════════════════════════════════════════════
-def render_performance_analytics():
-    st.markdown('<div class="section-header">📊 PERFORMANCE ANALYTICS</div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown('<div class="section-header" style="font-size:1rem;">⚽ SPORT BREAKDOWN</div>', unsafe_allow_html=True)
-        breakdown = pd.DataFrame({
-            "SPORT": ["Football", "NBA", "NFL", "Tennis"],
-            "BETS": [45, 32, 28, 15],
-            "WIN RATE": ["55.6%", "53.1%", "57.1%", "60.0%"],
-            "PROFIT": ["+$420", "+$180", "+$310", "+$95"],
-            "ROI": ["+9.3%", "+5.6%", "+11.1%", "+6.3%"]
-        })
-        st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-        st.dataframe(style_dark_df(breakdown), use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown('<div class="section-header" style="font-size:1rem;">📅 MONTHLY PERFORMANCE</div>', unsafe_allow_html=True)
-        monthly = pd.DataFrame({
-            "MONTH": ["Jan", "Feb", "Mar", "Apr", "May"],
-            "PROFIT": [120, 95, -45, 180, 70],
-            "WIN RATE": ["54%", "56%", "48%", "58%", "55%"],
-            "BETS": [28, 24, 18, 32, 22]
-        })
-
-        fig = px.bar(monthly, x="MONTH", y="PROFIT", color="PROFIT",
-                     color_continuous_scale=["#ff4444", "#D4AF37", "#00ff88"],
-                     text="PROFIT")
-        fig.update_layout(
-            template="plotly_dark", height=350,
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(26, 26, 46, 0.5)",
-            font=dict(family="Rajdhani", color="#e0e0e0"),
-            xaxis_title="MONTH", yaxis_title="PROFIT ($)"
-        )
-        st.plotly_chart(fig, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PREDICTIONS CENTER
@@ -1000,40 +944,78 @@ def render_predictions():
     tab1, tab2, tab3 = st.tabs(["🔮 UPCOMING", "📜 HISTORY", "⚙️ CALIBRATION"])
 
     with tab1:
-        upcoming = pd.DataFrame({
-            "TIME": ["14:00", "16:30", "19:45", "21:00"],
-            "MATCH": ["Chelsea vs Liverpool", "Nets vs Bucks", "Packers vs Bears", "Federer vs Nadal"],
-            "PREDICTION": ["Home Win (60%)", "Away Win (55%)", "Home Win (65%)", "Draw (40%)"],
-            "BEST ODDS": [2.05, 1.95, 1.75, 3.20],
-            "EV": ["+7.5%", "+5.2%", "+8.1%", "+3.5%"]
-        })
-        st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-        st.dataframe(style_dark_df(upcoming), use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # Fetch upcoming predictions from data layer
+        try:
+            upcoming_df = data.get_upcoming_matches_df() if hasattr(data, 'get_upcoming_matches_df') else pd.DataFrame()
+            if not upcoming_df.empty:
+                st.markdown('<div class="dark-container">', unsafe_allow_html=True)
+                st.dataframe(style_dark_df(upcoming_df), use_container_width=True, hide_index=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.info("🔮 No upcoming predictions available. Check API connections or wait for next fixture window.")
+        except Exception:
+            st.info("🔮 No upcoming predictions available. Check API connections or wait for next fixture window.")
 
     with tab2:
+        # Prediction history requires database
+        st.info("📜 Prediction history requires database integration. Connect your PostgreSQL instance to populate historical prediction results.")
         history = pd.DataFrame({
-            "DATE": ["2026-05-12", "2026-05-11", "2026-05-10", "2026-05-09"],
-            "MATCH": ["Man Utd vs Chelsea", "Heat vs Celtics", "Cowboys vs Eagles", "Swiatek vs Sabalenka"],
-            "PREDICTED": ["Home Win", "Away Win", "Home Win", "Home Win"],
-            "RESULT": ["✅ WIN", "✅ WIN", "❌ LOSS", "✅ WIN"],
-            "P/L": ["+$85", "+$120", "-$100", "+$95"]
+            "DATE": [],
+            "MATCH": [],
+            "PREDICTED": [],
+            "RESULT": [],
+            "P/L": []
         })
         st.markdown('<div class="dark-container">', unsafe_allow_html=True)
         st.dataframe(style_dark_df(history), use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with tab3:
-        st.info("Model calibration analysis — comparing predicted probabilities vs actual outcomes")
+        st.info("⚙️ Model calibration analysis — comparing predicted probabilities vs actual outcomes. Requires historical database.")
         cal_data = pd.DataFrame({
-            "BIN": ["50-55%", "55-60%", "60-65%", "65-70%", "70-75%", "75-80%"],
-            "PREDICTED": [52.5, 57.5, 62.5, 67.5, 72.5, 77.5],
-            "ACTUAL": [51.2, 56.8, 63.1, 66.9, 73.2, 78.5],
-            "BETS": [45, 38, 32, 28, 22, 15]
+            "BIN": [],
+            "PREDICTED": [],
+            "ACTUAL": [],
+            "BETS": []
         })
         st.markdown('<div class="dark-container">', unsafe_allow_html=True)
         st.dataframe(style_dark_df(cal_data), use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PERFORMANCE ANALYTICS — SPORT BREAKDOWN + MONTHLY
+# ══════════════════════════════════════════════════════════════════════════════
+def render_performance_analytics():
+    st.markdown('<div class="section-header">📊 PERFORMANCE ANALYTICS</div>', unsafe_allow_html=True)
+
+    st.info("📊 Performance analytics require database integration. Connect your PostgreSQL instance to populate sport breakdown and monthly performance data.")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown('<div class="section-header" style="font-size:1rem;">⚽ SPORT BREAKDOWN</div>', unsafe_allow_html=True)
+        breakdown = pd.DataFrame({
+            "SPORT": [],
+            "BETS": [],
+            "WIN RATE": [],
+            "PROFIT": [],
+            "ROI": []
+        })
+        st.markdown('<div class="dark-container">', unsafe_allow_html=True)
+        st.dataframe(style_dark_df(breakdown), use_container_width=True, hide_index=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown('<div class="section-header" style="font-size:1rem;">📅 MONTHLY PERFORMANCE</div>', unsafe_allow_html=True)
+        # Empty chart placeholder
+        fig = go.Figure()
+        fig.update_layout(
+            template="plotly_dark", height=350,
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(26, 26, 46, 0.5)",
+            font=dict(family="Rajdhani", color="#e0e0e0"),
+            xaxis_title="MONTH", yaxis_title="PROFIT ($)"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN ROUTER
