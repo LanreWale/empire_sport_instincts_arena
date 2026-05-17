@@ -126,21 +126,28 @@ class FootballCollector:
             'venue', 'status', 'source'
         ])
 
-    def get_team_form(self, team_name: str, last_n: int = 5) -> Dict:
-        """Calculate team form metrics from recent matches"""
-        # Implementation would query database for last N matches
+        def get_team_form(self, team_name: str, last_n: int = 5) -> Dict:
+        """Calculate team form metrics from recent matches.
+        
+        FIXED: Returns None values instead of fake zeros when no data available.
+        """
+        # This would query database for last N matches in production
+        # Return empty structure — no fake data
         return {
-            'matches_played': last_n,
-            'wins': 0,
-            'draws': 0,
-            'losses': 0,
-            'goals_scored': 0,
-            'goals_conceded': 0,
-            'xg_for': 0.0,
-            'xg_against': 0.0,
-            'points': 0,
-            'form_string': '?????'
+            'matches_played': 0,
+            'wins': None,
+            'draws': None,
+            'losses': None,
+            'goals_scored': None,
+            'goals_conceded': None,
+            'xg_for': None,
+            'xg_against': None,
+            'points': None,
+            'form_string': None,  # FIXED: No fake '?????' string
+            'data_available': False,
+            'message': 'Historical data not loaded — integrate database query'
         }
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
