@@ -35,11 +35,40 @@ st.set_page_config(
 # ════════════════════════════════════════════════════════════════════════════════
 data = EmpireDashboardData()
 
-# Auto-refresh every 60 seconds
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTO-REFRESH + MANUAL REFRESH CONTROL
+# ════════════════════════════════════════════════════════════════════════════════
+
+REFRESH_INTERVAL = 15  # seconds
+
+# Initialize session state
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-if time.time() - st.session_state.last_refresh > 15:
+# Calculate elapsed time since last refresh
+elapsed = time.time() - st.session_state.last_refresh
+
+# Manual refresh button (always available)
+col_refresh, col_status = st.columns([1, 4])
+with col_refresh:
+    if st.button("🔄 FORCE REFRESH", use_container_width=True):
+        st.session_state.last_refresh = time.time()
+        st.cache_data.clear()
+        st.rerun()
+
+with col_status:
+    # Show countdown / status
+    next_refresh = max(0, REFRESH_INTERVAL - elapsed)
+    status_color = "#00ff88" if data.is_live else "#FFD700"
+    status_text = "LIVE" if data.is_live else "DEMO"
+    st.markdown(
+        f'<div style="color: {status_color}; font-family: Orbitron; font-size: 0.8rem; '
+        f'padding-top: 8px;">● {status_text} | Next auto-refresh in {int(next_refresh)}s</div>',
+        unsafe_allow_html=True
+    )
+
+# Auto-refresh ONLY if interval has passed
+if elapsed >= REFRESH_INTERVAL:
     st.session_state.last_refresh = time.time()
     st.cache_data.clear()
     st.rerun()
