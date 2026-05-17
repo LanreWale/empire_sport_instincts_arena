@@ -39,7 +39,7 @@ data = EmpireDashboardData()
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-if time.time() - st.session_state.last_refresh > 60:
+if time.time() - st.session_state.last_refresh > 15:
     st.session_state.last_refresh = time.time()
     st.cache_data.clear()
     st.rerun()
