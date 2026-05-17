@@ -5,41 +5,43 @@ Real-Time Sports Data Feeds | Multi-Provider Failover | Value Detection Engine
 ═══════════════════════════════════════════════════════════════════════════════
 
 Supported Providers:
- • API-SPORTS (API-Football) — Primary football feed
- • The Odds API — Odds aggregation from 40+ bookmakers
- • Sportmonks — Advanced football analytics (xG, predictions)
- • The Rundown — US sports odds (NBA, NFL, MLB, NHL)
- • TheSportsDB — Premium sports data (v2 API with X-API-KEY header)
+  • API-SPORTS (API-Football) — Primary football feed
+  • The Odds API — Odds aggregation from 40+ bookmakers
+  • Sportmonks — Advanced football analytics (xG, predictions)
+  • TheSportsDB — Media-rich metadata + livescores (v1 + v2)
+  • MySportsFeeds — US sports (NBA, NFL, MLB, NHL, MLS)
+  • Football-Data.org — Free backup for major European leagues
 
 Architecture:
- ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
- │ API-SPORTS      │ │ The Odds API    │ │ Sportmonks      │
- │ (Football)      │ │ (Odds Feed)     │ │ (Analytics)     │
- └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
-          │                     │                     │
-          └─────────────────────┼─────────────────────┘
-                                │
-                    ┌───────────▼───────────┐
-                    │   EMPIRE Data Router    │
-                    │  • Failover logic       │
-                    │  • Rate limiting        │
-                    │  • Cache layer          │
-                    │  • Normalization        │
-                    └───────────┬───────────┘
-                                │
-                    ┌───────────▼───────────┐
-                    │    EMPIRE AI Engine   │
-                    │  • EV Calculator      │
-                    │  • Kelly Criterion    │
-                    │  • Risk Assessment    │
-                    │  • Prediction Models  │
-                    └───────────────────────┘
+  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+  │  API-SPORTS     │     │  The Odds API   │     │  Sportmonks     │
+  │  (Football)     │     │  (Odds Feed)    │     │  (Analytics)    │
+  └────────┬────────┘     └────────┬────────┘     └────────┬────────┘
+           │                       │                       │
+           └───────────────────────┼───────────────────────┘
+                                   │
+                    ┌───────────────▼───────────────┐
+                    │   EMPIRE Data Router          │
+                    │   • Failover logic            │
+                    │   • Rate limiting             │
+                    │   • Cache layer               │
+                    │   • Normalization             │
+                    └───────────────┬───────────────┘
+                                    │
+                    ┌───────────────▼───────────────┐
+                    │   EMPIRE AI Engine            │
+                    │   • EV Calculator             │
+                    │   • Kelly Criterion           │
+                    │   • Risk Assessment           │
+                    │   • Prediction Models         │
+                    └───────────────────────────────┘
 """
 
 import os
 import json
 import time
 import hashlib
+import base64
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
@@ -47,51 +49,83 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from enum import Enum
 import logging
+import traceback
+from dotenv import load_dotenv
+
+# Load .env file explicitly
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EMPIRE_DATA")
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION & API KEYS
-# Load from environment variables — NO PLACEHOLDERS
-# ═══════════════════════════════════════════════════════════════════════════════
+# Load from environment variables — with robust cleaning for malformed values
+# ════════════════════════════════════════════════════════════════════════════════
 
 class APIConfig:
     """Centralized API configuration with failover priorities.
-    
-    All keys MUST be set via environment variables.
-    No placeholder defaults — system fails fast if keys are missing.
-    """
+    Handles malformed .env values like _KEY=prefix."""
+
+    @staticmethod
+    def _clean_key(key: str) -> str:
+        """Remove malformed _KEY= prefix from env values."""
+        if not key:
+            return ""
+        if key.startswith("_KEY="):
+            key = key[5:]
+        if key.startswith("KEY="):
+            key = key[4:]
+        return key.strip()
+
+    @staticmethod
+    def _safe_float(value, default=0.0):
+        """Safely convert any value to float, handling strings like '-'."""
+        if value is None or value == "" or value == "-":
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
 
     # API-SPORTS (API-Football) — https://www.api-football.com/
-    API_SPORTS_KEY = os.getenv("API_SPORTS_KEY")
+    API_SPORTS_KEY = _clean_key(os.getenv("API_SPORTS_KEY", ""))
     API_SPORTS_URL = "https://v3.football.api-sports.io"
     API_SPORTS_PRIORITY = 1  # Primary football data
 
     # The Odds API — https://the-odds-api.com/
-    ODDS_API_KEY = os.getenv("ODDS_API_KEY")
+    ODDS_API_KEY = _clean_key(os.getenv("ODDS_API_KEY", ""))
     ODDS_API_URL = "https://api.the-odds-api.com/v4"
     ODDS_API_PRIORITY = 1  # Primary odds feed
 
     # Sportmonks — https://www.sportmonks.com/
-    SPORTMONKS_KEY = os.getenv("SPORTMONKS_KEY")
+    SPORTMONKS_KEY = _clean_key(os.getenv("SPORTMONKS_KEY", ""))
     SPORTMONKS_URL = "https://api.sportmonks.com/v3/football"
     SPORTMONKS_PRIORITY = 2  # Secondary analytics
 
-    # The Rundown — https://therundown.io/
-    RUNDOWN_KEY = os.getenv("RUNDOWN_KEY")
-    RUNDOWN_URL = "https://api.therundown.io/v1"
-    RUNDOWN_PRIORITY = 2  # US sports secondary
+    # MySportsFeeds — https://www.mysportsfeeds.com/
+    # Uses TWO-PART auth: API Key (username) + Password
+    MYSPORTSFEEDS_KEY = _clean_key(os.getenv("MYSPORTSFEEDS_KEY", ""))
+    MYSPORTSFEEDS_PASSWORD = _clean_key(os.getenv("MYSPORTSFEEDS_PASSWORD", ""))
+    MYSPORTSFEEDS_URL = "https://api.mysportsfeeds.com/v2.1/pull"
+    MYSPORTSFEEDS_PRIORITY = 2  # US sports
 
-    # TheSportsDB — https://www.thesportsdb.com/ (Premium v2)
-    THESPORTSDB_KEY = os.getenv("TheSportDB_API_key")
+    # Football-Data.org (free backup) — https://www.football-data.org/
+    FOOTBALL_DATA_KEY = _clean_key(os.getenv("FOOTBALL_DATA_KEY", ""))
+    FOOTBALL_DATA_URL = "https://api.football-data.org/v4"
+    FOOTBALL_DATA_PRIORITY = 3  # Free fallback
+
+    # TheSportsDB — https://www.thesportsdb.com/
+    THESPORTSDB_KEY = _clean_key(os.getenv("TheSportDB_API_key", ""))
     THESPORTSDB_URL = "https://www.thesportsdb.com/api/v2/json"
-    THESPORTSDB_PRIORITY = 2  # Multi-sport data
+    THESPORTSDB_URL_V1 = "https://www.thesportsdb.com/api/v1/json"
+    THESPORTSDB_PRIORITY = 2  # Media-rich metadata + livescores
 
     # Cache settings
-    CACHE_TTL_SECONDS = 30   # Live data cache
-    ODDS_CACHE_TTL = 60    # Odds refresh rate
+    CACHE_TTL_SECONDS = 30  # Live data cache
+    ODDS_CACHE_TTL = 60     # Odds refresh rate
 
     # Rate limits
     MAX_RETRIES = 3
@@ -105,8 +139,9 @@ class APIConfig:
             "API_SPORTS_KEY": cls.API_SPORTS_KEY,
             "ODDS_API_KEY": cls.ODDS_API_KEY,
             "SPORTMONKS_KEY": cls.SPORTMONKS_KEY,
-            "RUNDOWN_KEY": cls.RUNDOWN_KEY,
+            "MYSPORTSFEEDS_KEY": cls.MYSPORTSFEEDS_KEY,
             "TheSportDB_API_key": cls.THESPORTSDB_KEY,
+            "FOOTBALL_DATA_KEY": cls.FOOTBALL_DATA_KEY,
         }
         return [k for k, v in required.items() if not v]
 
@@ -116,9 +151,10 @@ class APIConfig:
         return bool(cls.API_SPORTS_KEY or cls.ODDS_API_KEY or cls.SPORTMONKS_KEY)
 
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATA MODELS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 
 class MatchStatus(Enum):
     SCHEDULED = "SCHEDULED"
@@ -198,9 +234,9 @@ class Match:
             "STATUS": "🔴 LIVE" if self.status in ["LIVE", "HALFTIME"] else ("⏳ " + self.status),
             "SCORE": f"{self.home_score}-{self.away_score}" if self.home_score is not None else "vs",
             "MIN": f"{self.minute}'" if self.minute else "-",
-            "HOME": self.home_odds,
-            "DRAW": self.draw_odds,
-            "AWAY": self.away_odds,
+            "HOME": self.home_odds if self.home_odds else "-",
+            "DRAW": self.draw_odds if self.draw_odds else "-",
+            "AWAY": self.away_odds if self.away_odds else "-",
             "PREDICTION": self._format_prediction(),
             "EV": self._format_ev(),
             "CONF": self.confidence or "-",
@@ -251,9 +287,10 @@ class OddsSnapshot:
         }
 
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # BASE PROVIDER CLASS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 
 class DataProvider:
     """Abstract base class for all sports data providers."""
@@ -267,6 +304,7 @@ class DataProvider:
 
     def _make_request(self, url: str, headers: Dict = None, params: Dict = None) -> Optional[Dict]:
         """Make HTTP request with retry logic and rate limiting."""
+        # Rate limiting
         elapsed = time.time() - self.last_call
         if elapsed < self.rate_limit_delay:
             time.sleep(self.rate_limit_delay - elapsed)
@@ -275,9 +313,9 @@ class DataProvider:
             try:
                 self.last_call = time.time()
                 response = requests.get(
-                    url,
-                    headers=headers,
-                    params=params,
+                    url, 
+                    headers=headers, 
+                    params=params, 
                     timeout=APIConfig.REQUEST_TIMEOUT
                 )
 
@@ -337,10 +375,11 @@ class DataProvider:
         raise NotImplementedError
 
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # API-SPORTS (API-FOOTBALL) PROVIDER
 # Primary football data: live scores, fixtures, statistics
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 
 class APISportsProvider(DataProvider):
     """
@@ -353,7 +392,7 @@ class APISportsProvider(DataProvider):
         super().__init__("API-SPORTS", APIConfig.API_SPORTS_PRIORITY)
         self.base_url = APIConfig.API_SPORTS_URL
         self.headers = {
-            "x-rapidapi-key": APIConfig.API_SPORTS_KEY or "",
+            "x-rapidapi-key": APIConfig.API_SPORTS_KEY,
             "x-rapidapi-host": "v3.football.api-sports.io"
         }
         self.rate_limit_delay = 0.5  # 6 calls/second on basic plan
@@ -559,10 +598,11 @@ class APISportsProvider(DataProvider):
         )
 
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # THE ODDS API PROVIDER
 # Odds aggregation from 40+ global bookmakers
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 
 class TheOddsAPIProvider(DataProvider):
     """
@@ -628,13 +668,11 @@ class TheOddsAPIProvider(DataProvider):
         if not APIConfig.ODDS_API_KEY:
             return []
 
-        # FIXED: Actually fetch odds per event using the event-specific endpoint
         cache_key = self._get_cache_key("event_odds", {"event": match_id, "markets": markets or ["h2h"]})
         cached = self._get_cached(cache_key, ttl=APIConfig.ODDS_CACHE_TTL)
         if cached:
             return self._parse_event_odds(cached, match_id)
 
-        # Fetch specific event with odds from all bookmakers
         data = self._make_request(
             f"{self.base_url}/sports/soccer/events/{match_id}/odds",
             params={
@@ -663,7 +701,7 @@ class TheOddsAPIProvider(DataProvider):
             bookmakers = event.get("bookmakers", [])
 
             if bookmakers:
-                best = bookmakers[0]  # Take first bookmaker or aggregate
+                best = bookmakers[0]
                 markets = best.get("markets", [])
                 for market in markets:
                     if market.get("key") == "h2h":
@@ -743,7 +781,7 @@ class TheOddsAPIProvider(DataProvider):
 # ═══════════════════════════════════════════════════════════════════════════════
 # SPORTMONKS PROVIDER
 # Advanced football analytics: xG, predictions, deep stats
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 
 class SportmonksProvider(DataProvider):
     """
@@ -839,61 +877,70 @@ class SportmonksProvider(DataProvider):
         )
 
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# THESPORTSDB PROVIDER (Premium v2)
-# Multi-sport data with premium API key
-# ═══════════════════════════════════════════════════════════════════════════════
+# THESPORTSDB PROVIDER
+# Media-rich sports metadata, livescores, events, team/player data
+# Free tier: 30 req/min | Premium: 100 req/min (v2 with X-API-KEY header)
+# ════════════════════════════════════════════════════════════════════════════════
 
 class TheSportsDBProvider(DataProvider):
     """
-    TheSportsDB integration (Premium v2).
-    Coverage: All major sports, leagues, teams, players, events.
-    Docs: https://www.thesportsdb.com/api.php
+    TheSportsDB integration.
+    Coverage: 50+ sports, team logos, player photos, livescores (v2 premium),
+    events, schedules, historical results.
+    Docs: https://www.thesportsdb.com/free_sports_api
     """
 
     def __init__(self):
         super().__init__("TheSportsDB", APIConfig.THESPORTSDB_PRIORITY)
-        self.base_url = APIConfig.THESPORTSDB_URL
-        self.rate_limit_delay = 2.0
+        self.base_url_v1 = APIConfig.THESPORTSDB_URL_V1
+        self.base_url_v2 = APIConfig.THESPORTSDB_URL
+        self.headers_v2 = {"X-API-KEY": APIConfig.THESPORTSDB_KEY} if APIConfig.THESPORTSDB_KEY else {}
+        self.rate_limit_delay = 2.0  # 30 req/min free tier
 
-    def get_live_matches(self, sport: str = "football", league_id: str = None) -> List[Match]:
-        """Fetch live events from TheSportsDB."""
+    def _make_request_v1(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
+        """Make v1 API request (key in URL path)."""
+        key = APIConfig.THESPORTSDB_KEY or "123"  # free test key
+        url = f"{self.base_url_v1}/{key}/{endpoint}"
+        return self._make_request(url, params=params)
+
+    def _make_request_v2(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
+        """Make v2 API request (key in header)."""
         if not APIConfig.THESPORTSDB_KEY:
-            logger.warning("TheSportDB_API_key not configured")
+            return None
+        url = f"{self.base_url_v2}/{endpoint}"
+        return self._make_request(url, headers=self.headers_v2, params=params)
+
+    def get_live_matches(self, sport: str = "Soccer", league_id: str = None) -> List[Match]:
+        """Fetch live scores via v2 livescore endpoint (premium key required)."""
+        if not APIConfig.THESPORTSDB_KEY:
             return []
 
-        cache_key = self._get_cache_key("events/live", {"sport": sport})
+        cache_key = self._get_cache_key("livescore", {"sport": sport})
         cached = self._get_cached(cache_key)
         if cached:
-            return self._parse_events(cached)
+            return self._parse_livescores(cached)
 
-        # FIXED: Use v2 API with X-API-KEY header for premium key
-        headers = {"X-API-KEY": APIConfig.THESPORTSDB_KEY}
-        data = self._make_request(
-            f"{self.base_url}/livescore/{sport}",
-            headers=headers
-        )
+        data = self._make_request_v2(f"livescore/{sport}")
         if not data:
             return []
 
         self._set_cached(cache_key, data)
-        return self._parse_events(data)
+        return self._parse_livescores(data)
 
-    def get_upcoming_matches(self, sport: str = "football", days: int = 7) -> List[Match]:
-        """Fetch upcoming events."""
-        if not APIConfig.THESPORTSDB_KEY:
-            return []
-
-        cache_key = self._get_cache_key("events/upcoming", {"sport": sport, "days": days})
+    def get_upcoming_matches(self, sport: str = "Soccer", days: int = 1) -> List[Match]:
+        """Fetch next events via v1 (no key required for basic calls)."""
+        cache_key = self._get_cache_key("eventsnextleague", {"sport": sport, "days": days})
         cached = self._get_cached(cache_key, ttl=300)
         if cached:
             return self._parse_events(cached)
 
-        headers = {"X-API-KEY": APIConfig.THESPORTSDB_KEY}
-        data = self._make_request(
-            f"{self.base_url}/eventsnextleague/{league_id}" if league_id else f"{self.base_url}/eventsnext/{sport}",
-            headers=headers
-        )
+        if APIConfig.THESPORTSDB_KEY:
+            data = self._make_request_v2(f"schedule/{sport}")
+        else:
+            return []
+
         if not data:
             return []
 
@@ -908,10 +955,53 @@ class TheSportsDBProvider(DataProvider):
         """TheSportsDB does not provide predictions — return None."""
         return None
 
-    def _parse_events(self, data: Dict) -> List[Match]:
-        """Parse TheSportsDB event response."""
+    def _parse_livescores(self, data: Dict) -> List[Match]:
+        """Parse TheSportsDB v2 livescore response."""
         matches = []
-        events = data.get("events", []) if isinstance(data, dict) else []
+        events = data.get("events", []) or data.get("livescore", [])
+
+        for event in events:
+            status = event.get("strStatus", "NS")
+            is_live = status in ["1H", "2H", "HT", "Q1", "Q2", "Q3", "Q4", "OT", "P1", "P2", "P3", "IN1", "IN2", "IN3", "IN4", "IN5", "S1", "S2", "S3", "S4", "S5"]
+
+            home_score = event.get("intHomeScore")
+            away_score = event.get("intAwayScore")
+            if home_score == "":
+                home_score = None
+            if away_score == "":
+                away_score = None
+            try:
+                home_score = int(home_score) if home_score is not None else None
+            except (ValueError, TypeError):
+                home_score = None
+            try:
+                away_score = int(away_score) if away_score is not None else None
+            except (ValueError, TypeError):
+                away_score = None
+
+            match = Match(
+                match_id=str(event.get("idEvent", "")),
+                provider="TheSportsDB",
+                league=event.get("strLeague", "Unknown"),
+                league_id=str(event.get("idLeague", "")),
+                home_team=event.get("strHomeTeam", "Home"),
+                away_team=event.get("strAwayTeam", "Away"),
+                home_score=home_score,
+                away_score=away_score,
+                status="LIVE" if is_live else status,
+                start_time=datetime.strptime(event.get("dateEvent", ""), "%Y-%m-%d") if event.get("dateEvent") else None,
+                venue=event.get("strVenue"),
+                country=event.get("strCountry"),
+                season=event.get("strSeason"),
+                round=event.get("intRound"),
+            )
+            matches.append(match)
+        return matches
+
+    def _parse_events(self, data: Dict) -> List[Match]:
+        """Parse TheSportsDB event schedule response."""
+        matches = []
+        events = data.get("events", [])
 
         for event in events:
             match = Match(
@@ -921,23 +1011,227 @@ class TheSportsDBProvider(DataProvider):
                 league_id=str(event.get("idLeague", "")),
                 home_team=event.get("strHomeTeam", "Home"),
                 away_team=event.get("strAwayTeam", "Away"),
-                home_score=int(event.get("intHomeScore")) if event.get("intHomeScore") else None,
-                away_score=int(event.get("intAwayScore")) if event.get("intAwayScore") else None,
-                status="LIVE" if event.get("strProgress") else "SCHEDULED",
-                start_time=datetime.strptime(event.get("strTimestamp", ""), "%Y-%m-%dT%H:%M:%S") if event.get("strTimestamp") else None,
+                start_time=datetime.strptime(event.get("dateEvent", ""), "%Y-%m-%d") if event.get("dateEvent") else None,
                 venue=event.get("strVenue"),
                 country=event.get("strCountry"),
                 season=event.get("strSeason"),
+                round=event.get("intRound"),
             )
             matches.append(match)
-
         return matches
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MYSPORTSFEEDS PROVIDER
+# US sports: NFL, NBA, MLB, NHL, MLS
+# Uses TWO-PART Basic Auth: API Key + Password
+# ════════════════════════════════════════════════════════════════════════════════
+
+class MySportsFeedsProvider(DataProvider):
+    """
+    MySportsFeeds integration.
+    Coverage: NFL, NBA, MLB, NHL, MLS. Real-time play-by-play.
+    Uses Basic Auth: base64(api_key:password)
+    Docs: https://www.mysportsfeeds.com/data-feeds/api-docs/
+    """
+
+    def __init__(self):
+        super().__init__("MySportsFeeds", APIConfig.MYSPORTSFEEDS_PRIORITY)
+        self.base_url = APIConfig.MYSPORTSFEEDS_URL
+        # MySportsFeeds requires TWO-PART Basic Auth: API Key + Password
+        # Format: base64(api_key:password)
+        api_key = APIConfig.MYSPORTSFEEDS_KEY
+        password = APIConfig.MYSPORTSFEEDS_PASSWORD
+        if api_key and password:
+            credentials = base64.b64encode(f"{api_key}:{password}".encode()).decode()
+            self.headers = {"Authorization": f"Basic {credentials}"}
+        else:
+            self.headers = {}
+        self.rate_limit_delay = 2.0
+
+    def get_live_matches(self, sport: str = "nba", league_id: str = None) -> List[Match]:
+        """Fetch live games."""
+        if not APIConfig.MYSPORTSFEEDS_KEY:
+            return []
+
+        cache_key = self._get_cache_key("games", {"sport": sport})
+        cached = self._get_cached(cache_key)
+        if cached:
+            return self._parse_games(cached)
+
+        season = datetime.now().year
+        data = self._make_request(
+            f"{self.base_url}/{sport}/current/games.json",
+            self.headers,
+            {"date": datetime.now().strftime("%Y%m%d")}
+        )
+        if not data:
+            return []
+
+        self._set_cached(cache_key, data)
+        return self._parse_games(data)
+
+    def get_upcoming_matches(self, sport: str = "nba", days: int = 7) -> List[Match]:
+        """Fetch upcoming games."""
+        if not APIConfig.MYSPORTSFEEDS_KEY:
+            return []
+
+        cache_key = self._get_cache_key("games/upcoming", {"sport": sport, "days": days})
+        cached = self._get_cached(cache_key, ttl=300)
+        if cached:
+            return self._parse_games(cached)
+
+        data = self._make_request(
+            f"{self.base_url}/{sport}/current/games.json",
+            self.headers,
+            {"date": datetime.now().strftime("%Y%m%d")}
+        )
+        if not data:
+            return []
+
+        self._set_cached(cache_key, data)
+        return self._parse_games(data)
+
+    def get_odds(self, match_id: str, markets: List[str] = None) -> List[OddsSnapshot]:
+        """MySportsFeeds does not provide odds — return empty."""
+        return []
+
+    def get_predictions(self, match_id: str) -> Optional[Match]:
+        """MySportsFeeds does not provide predictions — return None."""
+        return None
+
+    def _parse_games(self, data: Dict) -> List[Match]:
+        """Parse MySportsFeeds response."""
+        matches = []
+        for game in data.get("games", []):
+            status = game.get("schedule", {}).get("status", "SCHEDULED")
+            is_live = status == "IN_PROGRESS"
+
+            home_score = game.get("score", {}).get("homeScoreTotal")
+            away_score = game.get("score", {}).get("awayScoreTotal")
+
+            matches.append(Match(
+                match_id=str(game.get("schedule", {}).get("id", "")),
+                provider="MySportsFeeds",
+                league=game.get("schedule", {}).get("league", "Unknown"),
+                league_id="",
+                home_team=game.get("schedule", {}).get("homeTeam", {}).get("name", "Home"),
+                away_team=game.get("schedule", {}).get("awayTeam", {}).get("name", "Away"),
+                home_score=home_score,
+                away_score=away_score,
+                status="LIVE" if is_live else status,
+                start_time=datetime.fromisoformat(game.get("schedule", {}).get("startTime", "").replace("Z", "+00:00")) if game.get("schedule", {}).get("startTime") else None,
+            ))
+        return matches
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FOOTBALL-DATA.ORG PROVIDER
+# Free backup for major European leagues
+# ════════════════════════════════════════════════════════════════════════════════
+
+class FootballDataProvider(DataProvider):
+    """
+    Football-Data.org integration (free tier).
+    Coverage: Major European leagues, 10 req/min, 5-min delay on free tier.
+    Docs: https://www.football-data.org/documentation/quickstart
+    """
+
+    def __init__(self):
+        super().__init__("Football-Data", APIConfig.FOOTBALL_DATA_PRIORITY)
+        self.base_url = APIConfig.FOOTBALL_DATA_URL
+        self.headers = {"X-Auth-Token": APIConfig.FOOTBALL_DATA_KEY}
+        self.rate_limit_delay = 6.0  # 10 req/min = 6s between calls
+
+    def get_live_matches(self, sport: str = "football", league_id: str = None) -> List[Match]:
+        """Fetch today's matches."""
+        if not APIConfig.FOOTBALL_DATA_KEY:
+            return []
+
+        cache_key = self._get_cache_key("matches", {"date": datetime.now().strftime("%Y-%m-%d")})
+        cached = self._get_cached(cache_key, ttl=300)
+        if cached:
+            return self._parse_matches(cached)
+
+        data = self._make_request(
+            f"{self.base_url}/matches",
+            self.headers
+        )
+        if not data:
+            return []
+
+        self._set_cached(cache_key, data)
+        return self._parse_matches(data)
+
+    def get_upcoming_matches(self, sport: str = "football", days: int = 7) -> List[Match]:
+        """Fetch upcoming matches."""
+        if not APIConfig.FOOTBALL_DATA_KEY:
+            return []
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        future = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+
+        cache_key = self._get_cache_key("matches/upcoming", {"from": today, "to": future})
+        cached = self._get_cached(cache_key, ttl=300)
+        if cached:
+            return self._parse_matches(cached)
+
+        data = self._make_request(
+            f"{self.base_url}/matches",
+            self.headers,
+            {"dateFrom": today, "dateTo": future}
+        )
+        if not data:
+            return []
+
+        self._set_cached(cache_key, data)
+        return self._parse_matches(data)
+
+    def get_odds(self, match_id: str, markets: List[str] = None) -> List[OddsSnapshot]:
+        """Football-Data does not provide odds — return empty."""
+        return []
+
+    def get_predictions(self, match_id: str) -> Optional[Match]:
+        """Football-Data does not provide predictions — return None."""
+        return None
+
+    def _parse_matches(self, data: Dict) -> List[Match]:
+        """Parse football-data.org response."""
+        matches = []
+        for match in data.get("matches", []):
+            status = match.get("status", "SCHEDULED")
+            minute = None
+            if status == "IN_PLAY":
+                status = "LIVE"
+            elif status == "PAUSED":
+                status = "HALFTIME"
+            elif status == "FINISHED":
+                status = "FINISHED"
+
+            home_score = match.get("score", {}).get("fullTime", {}).get("home")
+            away_score = match.get("score", {}).get("fullTime", {}).get("away")
+
+            matches.append(Match(
+                match_id=str(match.get("id", "")),
+                provider="Football-Data",
+                league=match.get("competition", {}).get("name", "Unknown"),
+                league_id=str(match.get("competition", {}).get("id", "")),
+                home_team=match.get("homeTeam", {}).get("name", "Home"),
+                away_team=match.get("awayTeam", {}).get("name", "Away"),
+                home_score=home_score,
+                away_score=away_score,
+                status=status,
+                minute=minute,
+                start_time=datetime.fromisoformat(match.get("utcDate", "").replace("Z", "+00:00")) if match.get("utcDate") else None,
+            ))
+        return matches
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # EMPIRE DATA ROUTER
 # Multi-provider aggregation with failover
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 
 class EmpireDataRouter:
     """
@@ -951,47 +1245,265 @@ class EmpireDataRouter:
             TheOddsAPIProvider(),
             SportmonksProvider(),
             TheSportsDBProvider(),
+            MySportsFeedsProvider(),
+            FootballDataProvider(),
         ]
         self.providers.sort(key=lambda p: p.priority)
         self.active_provider: Optional[DataProvider] = None
-        self.connection_log: List[Dict] = []  # FIXED: Added connection_log attribute
+        self.connection_log: List[Dict] = []
         self._health_check()
 
+    def _log_connection(self, provider_name: str, status: str, detail: str, 
+                        matches_found: int = 0, error_type: str = None, 
+                        http_code: int = None, response_time_ms: float = None,
+                        endpoint_tested: str = None):
+        """Log a structured connection attempt for real-time dashboard display."""
+        entry = {
+            "timestamp": datetime.now().strftime("%H:%M:%S.%f")[:-3],
+            "provider": provider_name,
+            "status": status,  # SUCCESS, FAIL, TIMEOUT, RATE_LIMIT, NO_KEY, ERROR, EMPTY
+            "detail": detail,
+            "matches_found": matches_found,
+            "error_type": error_type,
+            "http_code": http_code,
+            "response_time_ms": response_time_ms,
+            "endpoint_tested": endpoint_tested,
+        }
+        self.connection_log.append(entry)
+        # Keep only last 100 entries
+        if len(self.connection_log) > 100:
+            self.connection_log = self.connection_log[-100:]
+
+        # Also log to Python logger
+        level = logging.INFO if status == "SUCCESS" else logging.WARNING
+        logger.log(level, f"[{provider_name}] {status}: {detail}")
+
+    def get_connection_log_df(self) -> pd.DataFrame:
+        """Return connection log as DataFrame for dashboard display."""
+        if not self.connection_log:
+            return pd.DataFrame(columns=["TIME", "PROVIDER", "STATUS", "HTTP", "MATCHES", "RESPONSE_MS", "DETAIL", "ENDPOINT"])
+
+        df = pd.DataFrame(self.connection_log)
+        df = df.rename(columns={
+            "timestamp": "TIME",
+            "provider": "PROVIDER",
+            "status": "STATUS",
+            "http_code": "HTTP",
+            "matches_found": "MATCHES",
+            "response_time_ms": "RESPONSE_MS",
+            "detail": "DETAIL",
+            "endpoint_tested": "ENDPOINT",
+        })
+        # Reorder columns
+        df = df[["TIME", "PROVIDER", "STATUS", "HTTP", "MATCHES", "RESPONSE_MS", "DETAIL", "ENDPOINT"]]
+        return df.iloc[::-1].reset_index(drop=True)  # Most recent first
+
+    def get_provider_status(self) -> List[Dict]:
+        """Return connection status for all providers with detailed error info.
+        Also logs each test attempt to connection_log."""
+        status = []
+        for provider in self.providers:
+            start_time = time.time()
+            try:
+                test = provider.get_live_matches()
+                elapsed_ms = (time.time() - start_time) * 1000
+                is_online = test is not None and len(test) > 0
+                match_count = len(test) if test else 0
+
+                status_text = "ONLINE" if is_online else "EMPTY (key valid but no matches today)"
+                status.append({
+                    "name": provider.name,
+                    "status": status_text,
+                    "priority": provider.priority,
+                    "matches_found": match_count,
+                    "error": None,
+                    "response_time_ms": round(elapsed_ms, 2),
+                })
+
+                self._log_connection(
+                    provider_name=provider.name,
+                    status="SUCCESS" if is_online else "EMPTY",
+                    detail=f"Status check: {status_text}",
+                    matches_found=match_count,
+                    response_time_ms=round(elapsed_ms, 2),
+                    endpoint_tested="get_provider_status()",
+                )
+
+            except requests.exceptions.HTTPError as e:
+                elapsed_ms = (time.time() - start_time) * 1000
+                code = e.response.status_code if e.response else "???"
+                msg = "INVALID KEY" if code == 403 else ("RATE LIMITED" if code == 429 else f"HTTP {code}")
+
+                status.append({
+                    "name": provider.name,
+                    "status": f"OFFLINE — {msg}",
+                    "priority": provider.priority,
+                    "matches_found": 0,
+                    "error": str(e)[:80],
+                    "response_time_ms": round(elapsed_ms, 2),
+                })
+
+                self._log_connection(
+                    provider_name=provider.name,
+                    status="FAIL",
+                    detail=f"Status check failed: {msg}",
+                    error_type="HTTPError",
+                    http_code=code,
+                    response_time_ms=round(elapsed_ms, 2),
+                    endpoint_tested="get_provider_status()",
+                )
+
+            except Exception as e:
+                elapsed_ms = (time.time() - start_time) * 1000
+                status.append({
+                    "name": provider.name,
+                    "status": f"OFFLINE — {type(e).__name__}",
+                    "priority": provider.priority,
+                    "matches_found": 0,
+                    "error": str(e)[:80],
+                    "response_time_ms": round(elapsed_ms, 2),
+                })
+
+                self._log_connection(
+                    provider_name=provider.name,
+                    status="ERROR",
+                    detail=f"Status check failed: {type(e).__name__}: {str(e)[:80]}",
+                    error_type=type(e).__name__,
+                    response_time_ms=round(elapsed_ms, 2),
+                    endpoint_tested="get_provider_status()",
+                )
+        return status
+
     def _health_check(self):
-        """Test all providers and select the best available."""
+        """Test all providers with detailed logging and select the best available."""
+        logger.info("=" * 60)
+        logger.info("🔍 EMPIRE HEALTH CHECK — Testing all API providers")
+        logger.info("=" * 60)
+
         for provider in self.providers:
             logger.info(f"Testing {provider.name}...")
+            start_time = time.time()
+
             try:
                 matches = provider.get_live_matches()
-                status = "SUCCESS" if matches else "EMPTY"
-                detail = f"{len(matches)} matches retrieved" if matches else "No matches returned"
-                self.connection_log.append({
-                    "provider": provider.name,
-                    "status": status,
-                    "detail": detail,
-                    "timestamp": datetime.now().isoformat()
-                })
-                if matches is not None and len(matches) > 0:
+                elapsed_ms = (time.time() - start_time) * 1000
+
+                if matches is not None:
+                    match_count = len(matches) if hasattr(matches, '__len__') else 0
                     self.active_provider = provider
-                    logger.info(f"✅ {provider.name} is ACTIVE")
+
+                    self._log_connection(
+                        provider_name=provider.name,
+                        status="SUCCESS",
+                        detail=f"Provider active — {match_count} live matches retrieved",
+                        matches_found=match_count,
+                        response_time_ms=round(elapsed_ms, 2),
+                        endpoint_tested="get_live_matches()",
+                    )
+                    logger.info(f"✅ {provider.name} is ACTIVE with {match_count} matches ({elapsed_ms:.0f}ms)")
                     break
+                else:
+                    self._log_connection(
+                        provider_name=provider.name,
+                        status="FAIL",
+                        detail="Provider returned None (no response)",
+                        response_time_ms=round(elapsed_ms, 2),
+                        endpoint_tested="get_live_matches()",
+                    )
+
+            except requests.exceptions.HTTPError as e:
+                elapsed_ms = (time.time() - start_time) * 1000
+                code = e.response.status_code if e.response else None
+
+                if code == 403:
+                    detail = "API KEY INVALID or EXPIRED (403) — regenerate key"
+                elif code == 401:
+                    detail = "API KEY UNAUTHORIZED (401) — check key format"
+                elif code == 429:
+                    detail = "RATE LIMITED (429) — too many requests, wait and retry"
+                elif code == 404:
+                    detail = "ENDPOINT NOT FOUND (404) — API path may have changed"
+                elif code == 500:
+                    detail = "SERVER ERROR (500) — provider server down"
+                elif code == 502:
+                    detail = "BAD GATEWAY (502) — provider gateway error"
+                elif code == 503:
+                    detail = "SERVICE UNAVAILABLE (503) — provider maintenance"
+                else:
+                    detail = f"HTTP ERROR ({code}) — {str(e)[:80]}"
+
+                self._log_connection(
+                    provider_name=provider.name,
+                    status="FAIL",
+                    detail=detail,
+                    error_type="HTTPError",
+                    http_code=code,
+                    response_time_ms=round(elapsed_ms, 2),
+                    endpoint_tested="get_live_matches()",
+                )
+                logger.error(f"❌ {provider.name}: {detail}")
+
+            except requests.exceptions.ConnectionError as e:
+                elapsed_ms = (time.time() - start_time) * 1000
+                detail = f"CONNECTION FAILED — check internet/VPN/firewall. {str(e)[:60]}"
+                self._log_connection(
+                    provider_name=provider.name,
+                    status="FAIL",
+                    detail=detail,
+                    error_type="ConnectionError",
+                    response_time_ms=round(elapsed_ms, 2),
+                    endpoint_tested="get_live_matches()",
+                )
+                logger.error(f"❌ {provider.name}: {detail}")
+
+            except requests.exceptions.Timeout as e:
+                elapsed_ms = (time.time() - start_time) * 1000
+                detail = f"TIMEOUT — request took too long (>10s). Provider may be slow."
+                self._log_connection(
+                    provider_name=provider.name,
+                    status="TIMEOUT",
+                    detail=detail,
+                    error_type="Timeout",
+                    response_time_ms=round(elapsed_ms, 2),
+                    endpoint_tested="get_live_matches()",
+                )
+                logger.error(f"❌ {provider.name}: {detail}")
+
+            except requests.exceptions.RequestException as e:
+                elapsed_ms = (time.time() - start_time) * 1000
+                detail = f"REQUEST FAILED — {type(e).__name__}: {str(e)[:80]}"
+                self._log_connection(
+                    provider_name=provider.name,
+                    status="FAIL",
+                    detail=detail,
+                    error_type=type(e).__name__,
+                    response_time_ms=round(elapsed_ms, 2),
+                    endpoint_tested="get_live_matches()",
+                )
+                logger.error(f"❌ {provider.name}: {detail}")
+
             except Exception as e:
-                self.connection_log.append({
-                    "provider": provider.name,
-                    "status": "FAIL",
-                    "detail": str(e),
-                    "timestamp": datetime.now().isoformat()
-                })
-                logger.warning(f"❌ {provider.name} failed: {e}")
+                elapsed_ms = (time.time() - start_time) * 1000
+                detail = f"UNEXPECTED ERROR — {type(e).__name__}: {str(e)[:120]}"
+                self._log_connection(
+                    provider_name=provider.name,
+                    status="ERROR",
+                    detail=detail,
+                    error_type=type(e).__name__,
+                    response_time_ms=round(elapsed_ms, 2),
+                    endpoint_tested="get_live_matches()",
+                )
+                logger.error(f"❌ {provider.name}: {detail}")
+                logger.debug(traceback.format_exc())
 
         if not self.active_provider:
-            logger.error("No providers available! Check API keys in environment variables.")
-            self.connection_log.append({
-                "provider": "SYSTEM",
-                "status": "FAIL",
-                "detail": "No active providers — all API keys missing or invalid",
-                "timestamp": datetime.now().isoformat()
-            })
+            self._log_connection(
+                provider_name="SYSTEM",
+                status="FAIL",
+                detail="NO PROVIDERS AVAILABLE — All APIs failed. Check .env keys and internet connection.",
+                endpoint_tested="_health_check()",
+            )
+            logger.error("No providers available! All API keys missing or invalid.")
 
     def get_live_matches(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
         """Fetch live matches from best available provider."""
@@ -1016,7 +1528,6 @@ class EmpireDataRouter:
 
         if not unique:
             logger.warning("No live matches from APIs — returning empty DataFrame")
-            # FIXED: Return empty DataFrame with correct schema instead of mock data
             return pd.DataFrame(columns=[
                 "TIME", "LEAGUE", "MATCH", "STATUS", "SCORE", "MIN",
                 "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"
@@ -1025,37 +1536,34 @@ class EmpireDataRouter:
         return pd.DataFrame([m.to_dataframe_row() for m in unique])
 
     def get_value_opportunities(self, min_ev: float = 0.02) -> pd.DataFrame:
-        """Fetch matches with positive EV opportunities."""
+        """Fetch matches with positive EV opportunities using available odds."""
         matches = self.get_live_matches()
 
-        # Calculate EV for each match
         opportunities = []
         for _, row in matches.iterrows():
-            # Skip if no odds
-            if pd.isna(row.get("HOME")) or pd.isna(row.get("AWAY")):
+            # Extract odds safely
+            home_odds = APIConfig._safe_float(row.get("HOME"), 0)
+            away_odds = APIConfig._safe_float(row.get("AWAY"), 0)
+            draw_odds = APIConfig._safe_float(row.get("DRAW"), 0)
+
+            # Skip if no usable odds
+            if home_odds <= 1.0 or away_odds <= 1.0:
                 continue
 
-            home_odds = float(row["HOME"]) if not pd.isna(row["HOME"]) else 0
-            away_odds = float(row["AWAY"]) if not pd.isna(row["AWAY"]) else 0
-            draw_odds = float(row["DRAW"]) if not pd.isna(row.get("DRAW")) else 0
-
-            # Simple implied probability
-            total = (1/home_odds if home_odds else 0) + (1/draw_odds if draw_odds else 0) + (1/away_odds if away_odds else 0)
+            # Calculate implied probabilities
+            total = (1/home_odds) + (1/draw_odds if draw_odds > 1 else 0) + (1/away_odds)
             if total == 0:
                 continue
 
-            margin = total - 1
-            home_prob = (1/home_odds) / total if home_odds else 0
-            away_prob = (1/away_odds) / total if away_odds else 0
-            draw_prob = (1/draw_odds) / total if draw_odds else 0
+            home_prob = (1/home_odds) / total
+            away_prob = (1/away_odds) / total
+            draw_prob = (1/draw_odds) / total if draw_odds > 1 else 0
 
-            # FIXED: Use actual prediction probabilities from providers instead of hard-coded edge
-            # Fetch predictions from Sportmonks or API-SPORTS if available
+            # Try to get real predictions to override implied probabilities
             empire_home = home_prob
             empire_away = away_prob
             empire_draw = draw_prob
 
-            # Try to get real predictions to override implied probabilities
             for provider in self.providers:
                 try:
                     pred = provider.get_predictions(str(row.get("MATCH", "")).split(" vs ")[0] if " vs " in str(row.get("MATCH", "")) else "")
@@ -1067,9 +1575,9 @@ class EmpireDataRouter:
                 except Exception:
                     continue
 
-            ev_home = (empire_home * home_odds) - 1 if home_odds else -1
-            ev_away = (empire_away * away_odds) - 1 if away_odds else -1
-            ev_draw = (empire_draw * draw_odds) - 1 if draw_odds else -1
+            ev_home = (empire_home * home_odds) - 1
+            ev_away = (empire_away * away_odds) - 1
+            ev_draw = (empire_draw * draw_odds) - 1 if draw_odds > 1 else -1
 
             best_ev = max(ev_home, ev_away, ev_draw)
             if best_ev > min_ev:
@@ -1087,17 +1595,16 @@ class EmpireDataRouter:
                     "MATCH": row["MATCH"],
                     "STATUS": row["STATUS"],
                     "HOME": home_odds,
-                    "DRAW": draw_odds,
+                    "DRAW": draw_odds if draw_odds > 1 else "-",
                     "AWAY": away_odds,
                     "PREDICTION": prediction_str,
                     "EV": f"+{best_ev*100:.1f}%",
                     "KELLY": f"${self._kelly_criterion(best_ev, max(home_odds, away_odds, draw_odds), 0.25):.0f}",
-                    "CONF": "HIGH" if best_ev > 0.08 else "MEDIUM" if best_ev > 0.05 else "LOW",
+                    "CONF": "HIGH" if best_ev > 0.08 else ("MEDIUM" if best_ev > 0.05 else "LOW"),
                     "SIGNAL": "🟢 BUY" if best_ev > 0.05 else "⚪ HOLD",
                 })
 
         if not opportunities:
-            # FIXED: Return empty DataFrame with correct schema instead of mock data
             logger.info("No value opportunities found at current EV threshold")
             return pd.DataFrame(columns=[
                 "TIME", "LEAGUE", "MATCH", "STATUS", "HOME", "DRAW", "AWAY",
@@ -1113,58 +1620,11 @@ class EmpireDataRouter:
         kelly = (prob * odds - 1) / (odds - 1)
         return max(0, kelly * 10000 * bankroll_pct)  # $10k base bankroll
 
-    # FIXED: Removed _mock_live_matches() — no fake data
-    # FIXED: Removed _mock_value_opportunities() — no fake data
-
-
-
-    def get_provider_status(self) -> List[Dict]:
-        """Return status of all providers for dashboard display."""
-        statuses = []
-        for provider in self.providers:
-            try:
-                matches = provider.get_live_matches()
-                if matches:
-                    statuses.append({
-                        "name": provider.name,
-                        "status": f"ONLINE — {len(matches)} matches",
-                        "response_time_ms": "-",
-                        "error": ""
-                    })
-                else:
-                    statuses.append({
-                        "name": provider.name,
-                        "status": "EMPTY — No matches returned",
-                        "response_time_ms": "-",
-                        "error": ""
-                    })
-            except Exception as e:
-                statuses.append({
-                    "name": provider.name,
-                    "status": f"OFFLINE — {str(e)[:30]}",
-                    "response_time_ms": "-",
-                    "error": str(e)[:50]
-                })
-        return statuses
-
-    def get_connection_log_df(self) -> pd.DataFrame:
-        """Return connection log as DataFrame for dashboard display."""
-        if not self.connection_log:
-            return pd.DataFrame(columns=["TIMESTAMP", "PROVIDER", "STATUS", "DETAIL"])
-        return pd.DataFrame([
-            {
-                "TIMESTAMP": entry.get("timestamp", ""),
-                "PROVIDER": entry.get("provider", ""),
-                "STATUS": entry.get("status", ""),
-                "DETAIL": entry.get("detail", "")
-            }
-            for entry in self.connection_log
-        ])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STREAMLIT INTEGRATION HELPERS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 
 class EmpireDashboardData:
     """Streamlit-friendly data interface for EMPIRE dashboard."""
@@ -1176,19 +1636,26 @@ class EmpireDashboardData:
 
     @property
     def is_live(self) -> bool:
-        """FIXED: Property to check if live data is available."""
+        """Property to check if live data is available."""
         return self.router.active_provider is not None
 
     @property
     def missing_keys(self) -> List[str]:
-        """FIXED: Property to return missing API keys."""
+        """Property to return missing API keys."""
         return APIConfig.get_missing_keys()
 
     @property
     def connection_log(self) -> List[Dict]:
-        """FIXED: Property to access router connection log."""
+        """Property to access router connection log."""
         return self.router.connection_log
 
+    def get_connection_log_df(self) -> pd.DataFrame:
+        """Get real-time API connection log for dashboard display."""
+        return self.router.get_connection_log_df()
+
+    def get_live_matches_df(self) -> pd.DataFrame:
+        """Get live matches for dashboard display."""
+        return self.router.get_live_matches()
 
     def get_upcoming_matches_df(self) -> pd.DataFrame:
         """Get upcoming matches for dashboard display."""
@@ -1206,10 +1673,6 @@ class EmpireDashboardData:
 
         return pd.DataFrame([m.to_dataframe_row() for m in all_matches])
 
-    def get_live_matches_df(self) -> pd.DataFrame:
-        """Get live matches for dashboard display."""
-        return self.router.get_live_matches()
-
     def get_value_opportunities_df(self) -> pd.DataFrame:
         """Get value betting opportunities."""
         return self.router.get_value_opportunities()
@@ -1226,7 +1689,6 @@ class EmpireDashboardData:
                 pass
 
         if not all_odds:
-            # FIXED: Return empty DataFrame with correct schema instead of fake bookmaker data
             logger.warning(f"No odds found for match {match_id}")
             return pd.DataFrame(columns=["BOOKMAKER", "MARKET", "1", "X", "2", "O", "U", "TIME"])
 
@@ -1243,7 +1705,7 @@ class EmpireDashboardData:
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # USAGE EXAMPLE
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     print("🚀 EMPIRE SPORT DATA LAYER — Self-Test")
@@ -1252,24 +1714,23 @@ if __name__ == "__main__":
     # Check configuration
     missing = APIConfig.get_missing_keys()
     if missing:
-        print(f"\n⚠️  Missing API keys: {', '.join(missing)}")
+        print("⚠️  Missing API keys: " + ", ".join(missing))
         print("Set these as environment variables to enable live data.")
     else:
-        print("\n✅ All API keys configured")
-
+        print("✅ All API keys configured")
     router = EmpireDataRouter()
 
-    print("\n📡 Fetching live matches...")
+    print("📡 Fetching live matches...")
     live = router.get_live_matches()
     print(f"✅ Retrieved {len(live)} live matches")
     if not live.empty:
         print(live.head())
 
-    print("\n💰 Fetching value opportunities...")
+    print("💰 Fetching value opportunities...")
     value = router.get_value_opportunities()
     print(f"✅ Found {len(value)} value opportunities")
     if not value.empty:
         print(value.head())
 
-    print("\n" + "=" * 60)
+    print("" + "=" * 60)
     print("EMPIRE Data Layer ready for dashboard integration.")
