@@ -67,7 +67,7 @@ logger = logging.getLogger("EMPIRE_DATA")
 
 class APIConfig:
     """Centralized API configuration with failover priorities.
-    Handles malformed .env values like _KEY=prefix."""
+    Handles malformed .env values like _KEY=."""
 
     @staticmethod
     def _clean_key(key: str) -> str:
@@ -288,6 +288,25 @@ class OddsSnapshot:
         }
 
 
+@dataclass
+class League:
+    """Unified league data model for dropdown population."""
+    league_id: str
+    name: str
+    sport: str
+    alternate_name: Optional[str] = None
+    country: Optional[str] = None
+
+    def to_dict(self) -> Dict:
+        return asdict(self)
+
+    def to_dropdown_option(self) -> Dict:
+        """Return format for st.selectbox options."""
+        return {
+            "label": f"{self.name} ({self.country})" if self.country else self.name,
+            "value": self.league_id,
+        }
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BASE PROVIDER CLASS
@@ -305,7 +324,6 @@ class DataProvider:
 
     def _make_request(self, url: str, headers: Dict = None, params: Dict = None) -> Optional[Dict]:
         """Make HTTP request with retry logic and rate limiting."""
-        # Rate limiting
         elapsed = time.time() - self.last_call
         if elapsed < self.rate_limit_delay:
             time.sleep(self.rate_limit_delay - elapsed)
@@ -359,6 +377,10 @@ class DataProvider:
         """Cache response data."""
         self.cache[cache_key] = (data, time.time())
 
+    def get_all_leagues(self, sport: str = "football") -> List[League]:
+        """Fetch all available leagues. Override in subclass."""
+        raise NotImplementedError
+
     def get_live_matches(self, sport: str = "football", league_id: str = None) -> List[Match]:
         """Fetch live matches. Override in subclass."""
         raise NotImplementedError
@@ -397,6 +419,39 @@ class APISportsProvider(DataProvider):
             "x-rapidapi-host": "v3.football.api-sports.io"
         }
         self.rate_limit_delay = 0.5  # 6 calls/second on basic plan
+
+    def get_all_leagues(self, sport: str = "football") -> List[League]:
+        """Fetch all football leagues from API-SPORTS."""
+        if not APIConfig.API_SPORTS_KEY:
+            return []
+
+        cache_key = self._get_cache_key("leagues", {"sport": sport})
+        cached = self._get_cached(cache_key, ttl=3600)  # Cache leagues for 1 hour
+        if cached:
+            return self._parse_leagues(cached)
+
+        data = self._make_request(f"{self.base_url}/leagues", self.headers)
+        if not data:
+            return []
+
+        self._set_cached(cache_key, data)
+        return self._parse_leagues(data)
+
+    def _parse_leagues(self, data: Dict) -> List[League]:
+        """Parse API-SPORTS leagues response."""
+        leagues = []
+        response = data.get("response", [])
+        for item in response:
+            league = item.get("league", {})
+            country = item.get("country", {})
+            leagues.append(League(
+                league_id=str(league.get("id", "")),
+                name=league.get("name", "Unknown"),
+                sport="football",
+                alternate_name=league.get("name", ""),
+                country=country.get("name", ""),
+            ))
+        return leagues
 
     def get_live_matches(self, sport: str = "football", league_id: str = None) -> List[Match]:
         """Fetch currently live football matches."""
@@ -617,6 +672,10 @@ class TheOddsAPIProvider(DataProvider):
         self.base_url = APIConfig.ODDS_API_URL
         self.rate_limit_delay = 1.0
 
+    def get_all_leagues(self, sport: str = "football") -> List[League]:
+        """The Odds API does not provide a leagues list — return empty."""
+        return []
+
     def get_live_matches(self, sport: str = "soccer", league_id: str = None) -> List[Match]:
         """Fetch in-play events."""
         if not APIConfig.ODDS_API_KEY:
@@ -796,6 +855,10 @@ class SportmonksProvider(DataProvider):
         self.base_url = APIConfig.SPORTMONKS_URL
         self.rate_limit_delay = 1.5
 
+    def get_all_leagues(self, sport: str = "football") -> List[League]:
+        """Sportmonks does not provide a leagues list — return empty."""
+        return []
+
     def get_live_matches(self, sport: str = "football", league_id: str = None) -> List[Match]:
         """Fetch live matches with predictions."""
         if not APIConfig.SPORTMONKS_KEY:
@@ -913,8 +976,102 @@ class TheSportsDBProvider(DataProvider):
         url = f"{self.base_url_v2}/{endpoint}"
         return self._make_request(url, headers=self.headers_v2, params=params)
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NEW: Fetch all leagues from TheSportsDB V2 API
+    # ═══════════════════════════════════════════════════════════════════════════
+    def get_all_leagues(self, sport: str = "football") -> List[League]:
+        """Fetch all leagues from TheSportsDB v2 /all/leagues endpoint.
+
+        Returns list of League objects with idLeague, strLeague, strSport.
+        Premium key required (X-API-KEY header).
+        """
+        if not APIConfig.THESPORTSDB_KEY:
+            logger.warning("THESPORTSDB_KEY not configured — cannot fetch leagues")
+            return []
+
+        cache_key = self._get_cache_key("all_leagues", {"sport": sport})
+        cached = self._get_cached(cache_key, ttl=3600)  # Cache 1 hour
+        if cached:
+            return self._parse_leagues(cached)
+
+        # V2 endpoint: /all/leagues
+        data = self._make_request_v2("all/leagues")
+        if not data:
+            logger.warning("TheSportsDB /all/leagues returned no data")
+            return []
+
+        self._set_cached(cache_key, data)
+        return self._parse_leagues(data)
+
+    def _parse_leagues(self, data: Dict) -> List[League]:
+        """Parse TheSportsDB /all/leagues response into League objects."""
+        leagues = []
+        # Response structure: {"leagues": [{"idLeague": "...", "strLeague": "...", "strSport": "...", "strCountry": "..."}, ...]}
+        raw_leagues = data.get("leagues", [])
+
+        if not raw_leagues and "league" in data:
+            # Alternative structure
+            raw_leagues = data.get("league", [])
+
+        for item in raw_leagues:
+            league_id = str(item.get("idLeague", item.get("id", "")))
+            name = item.get("strLeague", item.get("strLeagueAlternate", "Unknown"))
+            sport_name = item.get("strSport", "football")
+            country = item.get("strCountry", item.get("strLeagueAlternate", ""))
+
+            if league_id and name:
+                leagues.append(League(
+                    league_id=league_id,
+                    name=name,
+                    sport=sport_name,
+                    alternate_name=item.get("strLeagueAlternate", ""),
+                    country=country,
+                ))
+
+        logger.info(f"TheSportsDB parsed {len(leagues)} leagues")
+        return leagues
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NEW: Fetch livescore filtered by specific league ID
+    # ═══════════════════════════════════════════════════════════════════════════
+    def get_live_matches_by_league(self, league_id: str, sport: str = "Soccer") -> List[Match]:
+        """Fetch live scores for a SPECIFIC league via v2 livescore/{idLeague} endpoint.
+
+        This is the key method for league filtering. Uses TheSportsDB V2 API:
+        GET /api/v2/json/livescore/{idLeague}
+
+        Premium key required.
+        """
+        if not APIConfig.THESPORTSDB_KEY:
+            logger.warning("THESPORTSDB_KEY not configured")
+            return []
+
+        if not league_id or league_id == "ALL":
+            # Fallback to all livescores
+            return self.get_live_matches(sport)
+
+        cache_key = self._get_cache_key("livescore_by_league", {"league_id": league_id})
+        cached = self._get_cached(cache_key)
+        if cached:
+            return self._parse_livescores(cached)
+
+        # V2 endpoint: /livescore/{idLeague}
+        data = self._make_request_v2(f"livescore/{league_id}")
+        if not data:
+            logger.warning(f"TheSportsDB livescore/{league_id} returned no data")
+            return []
+
+        self._set_cached(cache_key, data)
+        return self._parse_livescores(data)
+
     def get_live_matches(self, sport: str = "Soccer", league_id: str = None) -> List[Match]:
-        """Fetch live scores via v2 livescore endpoint (premium key required)."""
+        """Fetch live scores via v2 livescore endpoint (premium key required).
+
+        If league_id is provided, delegates to get_live_matches_by_league().
+        """
+        if league_id and league_id != "ALL":
+            return self.get_live_matches_by_league(league_id, sport)
+
         if not APIConfig.THESPORTSDB_KEY:
             return []
 
@@ -1050,6 +1207,10 @@ class MySportsFeedsProvider(DataProvider):
             self.headers = {}
         self.rate_limit_delay = 2.0
 
+    def get_all_leagues(self, sport: str = "football") -> List[League]:
+        """MySportsFeeds does not provide a leagues list — return empty."""
+        return []
+
     def get_live_matches(self, sport: str = "nba", league_id: str = None) -> List[Match]:
         """Fetch live games."""
         if not APIConfig.MYSPORTSFEEDS_KEY:
@@ -1143,6 +1304,10 @@ class FootballDataProvider(DataProvider):
         self.base_url = APIConfig.FOOTBALL_DATA_URL
         self.headers = {"X-Auth-Token": APIConfig.FOOTBALL_DATA_KEY}
         self.rate_limit_delay = 6.0  # 10 req/min = 6s between calls
+
+    def get_all_leagues(self, sport: str = "football") -> List[League]:
+        """Football-Data.org does not provide a leagues list — return empty."""
+        return []
 
     def get_live_matches(self, sport: str = "football", league_id: str = None) -> List[Match]:
         """Fetch today's matches."""
@@ -1506,8 +1671,130 @@ class EmpireDataRouter:
             )
             logger.error("No providers available! All API keys missing or invalid.")
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NEW: Fetch all leagues across all providers (prioritizes TheSportsDB)
+    # ═══════════════════════════════════════════════════════════════════════════
+    def get_all_leagues(self, sport: str = "football") -> List[Dict]:
+        """Fetch all available leagues from the best provider that supports it.
+
+        Returns list of dicts: {"id": league_id, "name": league_name, "sport": sport, "country": country}
+        Used to populate the league dropdown in app.py.
+
+        Priority: TheSportsDB (V2 /all/leagues) > API-SPORTS > others.
+        """
+        all_leagues = []
+
+        # Try TheSportsDB first (best league coverage with V2 premium)
+        for provider in self.providers:
+            if provider.name == "TheSportsDB":
+                try:
+                    leagues = provider.get_all_leagues(sport)
+                    if leagues:
+                        for league in leagues:
+                            all_leagues.append({
+                                "id": league.league_id,
+                                "name": league.name,
+                                "sport": league.sport,
+                                "country": league.country or "",
+                            })
+                        logger.info(f"TheSportsDB returned {len(all_leagues)} leagues")
+                        break
+                except Exception as e:
+                    logger.warning(f"TheSportsDB league fetch failed: {e}")
+
+        # Fallback to API-SPORTS if TheSportsDB returned nothing
+        if not all_leagues:
+            for provider in self.providers:
+                if provider.name == "API-SPORTS":
+                    try:
+                        leagues = provider.get_all_leagues(sport)
+                        if leagues:
+                            for league in leagues:
+                                all_leagues.append({
+                                    "id": league.league_id,
+                                    "name": league.name,
+                                    "sport": league.sport,
+                                    "country": league.country or "",
+                                })
+                            logger.info(f"API-SPORTS returned {len(all_leagues)} leagues")
+                            break
+                    except Exception as e:
+                        logger.warning(f"API-SPORTS league fetch failed: {e}")
+
+        # Last resort: extract unique leagues from currently live matches
+        if not all_leagues:
+            logger.warning("No dedicated league API available — scraping from live matches")
+            leagues = set()
+            for provider in self.providers:
+                try:
+                    matches = provider.get_live_matches(sport) or []
+                    for m in matches:
+                        if m.league and m.league != "Unknown" and m.league_id:
+                            leagues.add((m.league_id, m.league, m.country or ""))
+                except Exception:
+                    continue
+            all_leagues = [{"id": lid, "name": name, "sport": sport, "country": country} 
+                          for lid, name, country in sorted(leagues)]
+
+        return all_leagues
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NEW: Fetch live matches filtered by specific league ID
+    # ═══════════════════════════════════════════════════════════════════════════
+    def get_live_matches_by_league(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
+        """Fetch live matches for a SPECIFIC league using server-side API filtering.
+
+        This replaces the broken client-side string filtering.
+        Uses provider-specific league_id parameters for accurate filtering.
+        """
+        if not league_id or league_id == "ALL":
+            return self.get_live_matches(sport)
+
+        all_matches = []
+
+        for provider in self.providers:
+            try:
+                # Each provider handles league_id in its own way
+                if provider.name == "TheSportsDB":
+                    # TheSportsDB V2 supports livescore/{idLeague}
+                    matches = provider.get_live_matches(sport, league_id)
+                elif provider.name == "API-SPORTS":
+                    # API-SPORTS supports ?league={id} parameter
+                    matches = provider.get_live_matches(sport, league_id)
+                else:
+                    # Other providers: fetch all then filter by league_id
+                    matches = provider.get_live_matches(sport)
+                    matches = [m for m in matches if m.league_id == league_id]
+
+                if matches:
+                    all_matches.extend(matches)
+                    logger.info(f"{provider.name}: {len(matches)} matches for league {league_id}")
+            except Exception as e:
+                logger.warning(f"{provider.name} league fetch failed for {league_id}: {e}")
+
+        # Deduplicate by match_id
+        seen = set()
+        unique = []
+        for m in all_matches:
+            if m.match_id not in seen:
+                seen.add(m.match_id)
+                unique.append(m)
+
+        if not unique:
+            logger.warning(f"No live matches found for league {league_id}")
+            return pd.DataFrame(columns=[
+                "MATCH_ID", "TIME", "LEAGUE", "MATCH", "STATUS", "SCORE", "MIN",
+                "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"
+            ])
+
+        return pd.DataFrame([m.to_dataframe_row() for m in unique])
+
     def get_live_matches(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
         """Fetch live matches from best available provider."""
+        # If league_id specified, use the new server-side filtered method
+        if league_id and league_id != "ALL":
+            return self.get_live_matches_by_league(sport, league_id)
+
         all_matches = []
 
         for provider in self.providers:
@@ -1530,7 +1817,7 @@ class EmpireDataRouter:
         if not unique:
             logger.warning("No live matches from APIs — returning empty DataFrame")
             return pd.DataFrame(columns=[
-                "TIME", "LEAGUE", "MATCH", "STATUS", "SCORE", "MIN",
+                "MATCH_ID", "TIME", "LEAGUE", "MATCH", "STATUS", "SCORE", "MIN",
                 "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"
             ])
 
@@ -1695,19 +1982,22 @@ class EmpireDataRouter:
 
         return result
 
-    def get_matches_by_status(self, status_filter: str = "all", sport: str = "football") -> pd.DataFrame:
-        """Fetch matches filtered by status: LIVE, SCHEDULED, FINISHED, ALL."""
+    def get_matches_by_status(self, status_filter: str = "all", sport: str = "football", league_id: str = None) -> pd.DataFrame:
+        """Fetch matches filtered by status: LIVE, SCHEDULED, FINISHED, ALL.
+
+        NEW: Added league_id parameter for server-side league filtering.
+        """
         all_matches = []
 
         for provider in self.providers:
             try:
                 if status_filter.lower() == "live":
-                    matches = provider.get_live_matches(sport)
+                    matches = provider.get_live_matches(sport, league_id)
                 elif status_filter.lower() == "scheduled":
                     matches = provider.get_upcoming_matches(sport, days=7)
                 else:
                     # For ALL or FINISHED, fetch both live and upcoming
-                    live = provider.get_live_matches(sport) or []
+                    live = provider.get_live_matches(sport, league_id) or []
                     upcoming = provider.get_upcoming_matches(sport, days=7) or []
                     matches = live + upcoming
 
@@ -1736,7 +2026,11 @@ class EmpireDataRouter:
         return pd.DataFrame([m.to_dataframe_row() for m in unique])
 
     def get_leagues(self, sport: str = "football") -> List[str]:
-        """Return list of available leagues from active providers."""
+        """DEPRECATED: Return list of available league names from active providers.
+
+        NOTE: This is the OLD broken method that only returns leagues from currently
+        live matches. Use get_all_leagues() instead for the full dropdown list.
+        """
         leagues = set()
         for provider in self.providers:
             try:
@@ -1780,16 +2074,20 @@ class EmpireDashboardData:
         """Get real-time API connection log for dashboard display."""
         return self.router.get_connection_log_df()
 
-    def get_live_matches_df(self) -> pd.DataFrame:
-        """Get live matches for dashboard display."""
-        return self.router.get_live_matches()
+    def get_all_leagues(self, sport: str = "football") -> List[Dict]:
+        """NEW: Fetch all leagues for dropdown population."""
+        return self.router.get_all_leagues(sport)
 
-    def get_upcoming_matches_df(self) -> pd.DataFrame:
+    def get_live_matches_df(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
+        """Get live matches for dashboard display — now with league filtering."""
+        return self.router.get_live_matches(sport, league_id)
+
+    def get_upcoming_matches_df(self, sport: str = "football") -> pd.DataFrame:
         """Get upcoming matches for dashboard display."""
         all_matches = []
         for provider in self.router.providers:
             try:
-                matches = provider.get_upcoming_matches()
+                matches = provider.get_upcoming_matches(sport=sport)
                 if matches:
                     all_matches.extend(matches)
             except Exception:
@@ -1846,6 +2144,14 @@ if __name__ == "__main__":
     else:
         print("✅ All API keys configured")
     router = EmpireDataRouter()
+
+    print("📡 Fetching all leagues from TheSportsDB...")
+    leagues = router.get_all_leagues("football")
+    print(f"✅ Retrieved {len(leagues)} leagues")
+    if leagues:
+        print("First 5 leagues:")
+        for league in leagues[:5]:
+            print(f"  • {league['name']} (ID: {league['id']}, Country: {league['country']})")
 
     print("📡 Fetching live matches...")
     live = router.get_live_matches()
