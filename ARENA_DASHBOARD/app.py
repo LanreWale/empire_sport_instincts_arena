@@ -643,7 +643,7 @@ def render_sidebar():
         st.subheader("📡 API CONNECTION LOG")
 
         try:
-            log_df = data.get_connection_log_df()
+            log_df = data.router.get_connection_log_df()
             if not log_df.empty:
                 # Color-code status column
                 def color_status(val):
@@ -946,7 +946,7 @@ def render_predictions():
     with tab1:
         # Fetch upcoming predictions from data layer
         try:
-            upcoming_df = data.get_upcoming_matches_df() if hasattr(data, 'get_upcoming_matches_df') else pd.DataFrame()
+            upcoming_df = data.get_upcoming_matches_df()
             if not upcoming_df.empty:
                 st.markdown('<div class="dark-container">', unsafe_allow_html=True)
                 st.dataframe(style_dark_df(upcoming_df), use_container_width=True, hide_index=True)
