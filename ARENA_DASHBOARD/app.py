@@ -3,6 +3,13 @@ ARENA DASHBOARD — EMPIRE SPORT INSTINCTS ARENA
 World-Class Professional Command Center
 24/7 AI Engine | Real-Time Global Sports Intelligence
 """
+import sys
+import os
+
+# Add project root to Python path BEFORE importing empire_data_layer
+# app.py is in ARENA_DASHBOARD/, empire_data_layer.py is in parent (project root)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 from pathlib import Path
 import base64
@@ -11,14 +18,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import random
-import sys
-import os
 import time
 
-# EMPIRE Live Data Integration
+# EMPIRE Live Data Integration — imports from project root
 from empire_data_layer import EmpireDashboardData
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 st.set_page_config(
     page_title="EMPIRE COMMAND CENTER",
@@ -44,11 +47,6 @@ if time.time() - st.session_state.last_refresh > 60:
 # ══════════════════════════════════════════════════════════════════════════════
 # PREMIUM DARK GOLD COMMAND CENTER CSS
 # ══════════════════════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════════════════════
-# PREMIUM DARK GOLD COMMAND CENTER CSS — FIXED FOR STREAMLIT 2026
-# Uses st.html() (official API) + targets actual Streamlit DOM structure
-# ══════════════════════════════════════════════════════════════════════════════
-
 st.html("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap');
@@ -59,17 +57,6 @@ st.html("""
     }
 
     /* Centered Logo Container - 90% width, reduced height */
-    .logo-center {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 10px 0;
-        width: 100%;
-    }
-
-    /* Logo container — centered, contained (user's original placement) */
     .logo-center {
         display: flex;
         flex-direction: column;
@@ -163,25 +150,19 @@ st.html("""
         50% { box-shadow: 0 0 25px rgba(0, 255, 136, 0.8); }
     }
 
-    /* ════════════════════════════════════════════════════════════════
-       DATAFRAME DARK GOLD — ULTRA-AGGRESSIVE SELECTORS
-       Mimics Live Match Cards: gold headers, bright text, dark cells
-       ════════════════════════════════════════════════════════════════ */
-
-    /* Force ALL dataframe backgrounds to dark */
+    /* DATAFRAME DARK GOLD — ULTRA-AGGRESSIVE SELECTORS */
     [data-testid="stDataFrameResizable"],
     [data-testid="stDataFrameResizable"] > div,
     [data-testid="stDataFrame"] {
         background-color: #1a1a2e !important;
     }
 
-    /* Virtual table inner container */
     [data-testid="stDataFrame"] [data-testid="stVirtualTable"],
     [data-testid="stDataFrame"] .stDataFrameContainer {
         background-color: #1a1a2e !important;
     }
 
-    /* HEADER CELLS — Gold gradient like Live Match card titles */
+    /* HEADER CELLS — Gold gradient */
     [data-testid="stDataFrame"] [role="columnheader"],
     [data-testid="stDataFrame"] th,
     [data-testid="stDataFrame"] .stDataFrameHeader {
@@ -197,7 +178,7 @@ st.html("""
         text-align: center !important;
     }
 
-    /* DATA CELLS — Bright gold/white text on dark, like match cards */
+    /* DATA CELLS — Bright gold/white text on dark */
     [data-testid="stDataFrame"] [role="gridcell"],
     [data-testid="stDataFrame"] td,
     [data-testid="stDataFrame"] .stDataFrameCell {
@@ -211,12 +192,12 @@ st.html("""
         text-align: center !important;
     }
 
-    /* Alternate row striping for readability */
+    /* Alternate row striping */
     [data-testid="stDataFrame"] [role="row"]:nth-child(even) [role="gridcell"] {
         background-color: #151525 !important;
     }
 
-    /* HOVER — Gold glow like match cards */
+    /* HOVER — Gold glow */
     [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] {
         background: rgba(212, 175, 55, 0.2) !important;
         color: #FFFFFF !important;
@@ -247,7 +228,7 @@ st.html("""
         border-radius: 4px;
     }
 
-    /* st.table fallback — same gold-on-dark theme */
+    /* st.table fallback */
     [data-testid="stTable"] {
         background-color: #1a1a2e !important;
         border: 1px solid #333 !important;
@@ -481,10 +462,6 @@ def render_ai_status():
 # ══════════════════════════════════════════════════════════════════════════════
 def render_header():
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # LOGO: Base64 HTML img — bypasses ALL st.image() CSS conflicts
-    # 90% width, max-height 240px, auto height, object-fit contain
-    # ═══════════════════════════════════════════════════════════════════════
     logo_path = Path("BRAND_ASSET/empire_logo_primary.png")
 
     if logo_path.exists():
@@ -493,15 +470,14 @@ def render_header():
         b64 = base64.b64encode(img_bytes).decode()
         logo_html = f'<img src="data:image/png;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
     else:
-        # Procedural SVG fallback — always renders
-        svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140">
-<defs>
-<linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
-<stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/>
-<stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/>
+        svg = """<<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140">
+<<defs>
+<<linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
+<<stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/>
+<<stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/>
 </linearGradient>
 </defs>
-<rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/>
+<<rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/>
 <text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text>
 <text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text>
 </svg>"""
@@ -520,9 +496,7 @@ def render_header():
 
     render_ai_status()
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # LIVE / DEMO MODE BANNER — Shows actual API connection status
-    # ═══════════════════════════════════════════════════════════════════════
+    # LIVE / DEMO MODE BANNER
     try:
         from empire_data_layer import EmpireDataRouter
         router = EmpireDataRouter()
@@ -564,7 +538,6 @@ def render_header():
 # ══════════════════════════════════════════════════════════════════════════════
 def render_sidebar():
     with st.sidebar:
-        # Sidebar logo rendered as HTML for consistency
         sidebar_logo_path = Path("BRAND_ASSET/empire_logo_arena.png")
         if sidebar_logo_path.exists():
             with open(sidebar_logo_path, "rb") as f:
@@ -589,10 +562,8 @@ def render_sidebar():
 
         st.subheader("⚡ SYSTEM STATUS")
 
-        # Live API connection status
         st.markdown('<div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; margin: 8px 0;">', unsafe_allow_html=True)
 
-        # Test each provider and show status with detailed errors
         provider_status = []
         try:
             from empire_data_layer import EmpireDataRouter
@@ -636,16 +607,12 @@ def render_sidebar():
         if st.button("🚨 EMERGENCY STOP", type="primary", use_container_width=True):
             st.error("ALL SYSTEMS HALTED")
 
-        # ═════════════════════════════════════════════════════════════════
-        # REAL-TIME API CONNECTION LOG
-        # ═════════════════════════════════════════════════════════════════
         st.markdown("<hr style='border-color: #333; margin: 15px 0;'>", unsafe_allow_html=True)
         st.subheader("📡 API CONNECTION LOG")
 
         try:
             log_df = data.router.get_connection_log_df()
             if not log_df.empty:
-                # Color-code status column
                 def color_status(val):
                     if val == "SUCCESS":
                         return "color: #00ff88; font-weight: 700;"
@@ -668,7 +635,6 @@ def render_sidebar():
 # LIVE MATCH TICKER
 # ══════════════════════════════════════════════════════════════════════════════
 def render_live_ticker():
-    # Fetch live matches for ticker instead of hard-coded data
     try:
         live_df = data.get_live_matches_df()
         if not live_df.empty:
@@ -703,13 +669,13 @@ def render_api_diagnostics():
         </div>
         """, unsafe_allow_html=True)
 
-        # Only check keys that actually exist in the data layer
         keys = [
             ("API-SPORTS", "API_SPORTS_KEY"),
             ("The Odds API", "ODDS_API_KEY"),
             ("Sportmonks", "SPORTMONKS_KEY"),
             ("TheSportsDB", "TheSportDB_API_key"),
-            ("The Rundown", "RUNDOWN_KEY"),
+            ("MySportsFeeds", "MYSPORTSFEEDS_KEY"),
+            ("Football-Data", "FOOTBALL_DATA_KEY"),
         ]
 
         for name, env_var in keys:
@@ -729,7 +695,6 @@ def render_api_diagnostics():
         </div>
         """, unsafe_allow_html=True)
 
-        # Quick network test
         import socket
         try:
             socket.create_connection(("8.8.8.8", 53), timeout=3)
@@ -784,12 +749,10 @@ def render_api_diagnostics():
 def render_live_matches():
     st.markdown('<div class="section-header">🔴 LIVE MATCHES NOW</div>', unsafe_allow_html=True)
 
-    # Fetch live matches from EMPIRE data layer — NO MOCK DATA
     try:
         live_df = data.get_live_matches_df()
         if not live_df.empty:
             live_matches = live_df.head(8).to_dict('records')
-            # Normalize column names for display
             for match in live_matches:
                 match.setdefault('league', match.get('LEAGUE', 'Unknown'))
                 match.setdefault('home', match.get('MATCH', '').split(' vs ')[0] if ' vs ' in match.get('MATCH', '') else 'Home')
@@ -865,11 +828,9 @@ def style_dark_df(df: pd.DataFrame) -> pd.DataFrame:
 # ══════════════════════════════════════════════════════════════════════════════
 # VALUE OPPORTUNITIES — DARK TABLE
 # ══════════════════════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════════════════════
 def render_value_opportunities(sport_filter):
     st.markdown('<div class="section-header">⚜ ACTIVE VALUE OPPORTUNITIES</div>', unsafe_allow_html=True)
 
-    # Fetch live value opportunities from EMPIRE data layer — NO MOCK DATA
     try:
         opportunities = data.get_value_opportunities_df()
 
@@ -896,11 +857,8 @@ def render_value_opportunities(sport_filter):
 def render_performance_history():
     st.markdown('<div class="section-header">📈 PERFORMANCE HISTORY</div>', unsafe_allow_html=True)
 
-    # NOTE: This requires a database connection for real historical data.
-    # For now, show empty state with instructions.
     st.info("📊 Performance history requires database integration. Connect your PostgreSQL instance to populate this chart with real trading data.")
 
-    # Placeholder chart structure (no fake data points)
     fig = go.Figure()
     fig.update_layout(
         title=dict(text="BANKROLL EVOLUTION", font=dict(family="Orbitron", size=20, color="#FFD700")),
@@ -917,11 +875,8 @@ def render_performance_history():
 def render_model_performance():
     st.markdown('<div class="section-header">🧠 AI MODEL PERFORMANCE</div>', unsafe_allow_html=True)
 
-    # NOTE: Model metrics should come from model evaluation pipeline.
-    # For now, show empty state.
     st.info("🧠 Model performance metrics require evaluation pipeline integration. Connect your model registry to display live accuracy, log loss, and Sharpe ratio data.")
 
-    # Empty dataframe with correct schema
     model_metrics = pd.DataFrame({
         "MODEL": [],
         "LOG LOSS": [],
@@ -944,7 +899,6 @@ def render_predictions():
     tab1, tab2, tab3 = st.tabs(["🔮 UPCOMING", "📜 HISTORY", "⚙️ CALIBRATION"])
 
     with tab1:
-        # Fetch upcoming predictions from data layer
         try:
             upcoming_df = data.get_upcoming_matches_df()
             if not upcoming_df.empty:
@@ -957,7 +911,6 @@ def render_predictions():
             st.info("🔮 No upcoming predictions available. Check API connections or wait for next fixture window.")
 
     with tab2:
-        # Prediction history requires database
         st.info("📜 Prediction history requires database integration. Connect your PostgreSQL instance to populate historical prediction results.")
         history = pd.DataFrame({
             "DATE": [],
@@ -1007,7 +960,6 @@ def render_performance_analytics():
 
     with col2:
         st.markdown('<div class="section-header" style="font-size:1rem;">📅 MONTHLY PERFORMANCE</div>', unsafe_allow_html=True)
-        # Empty chart placeholder
         fig = go.Figure()
         fig.update_layout(
             template="plotly_dark", height=350,
