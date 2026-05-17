@@ -124,8 +124,8 @@ class APIConfig:
     THESPORTSDB_PRIORITY = 2  # Media-rich metadata + livescores
 
     # Cache settings
-    CACHE_TTL_SECONDS = 10  # Live data cache
-    ODDS_CACHE_TTL = 15     # Odds refresh rate
+    CACHE_TTL_SECONDS = 30  # Live data cache
+    ODDS_CACHE_TTL = 60     # Odds refresh rate
 
     # Rate limits
     MAX_RETRIES = 3
@@ -228,6 +228,7 @@ class Match:
     def to_dataframe_row(self) -> Dict:
         """Convert to flat dict for DataFrame display."""
         return {
+            "MATCH_ID": self.match_id,
             "TIME": self.start_time.strftime("%H:%M") if self.start_time else "TBD",
             "LEAGUE": self.league,
             "MATCH": f"{self.home_team} vs {self.away_team}",
@@ -1620,6 +1621,132 @@ class EmpireDataRouter:
         kelly = (prob * odds - 1) / (odds - 1)
         return max(0, kelly * 10000 * bankroll_pct)  # $10k base bankroll
 
+
+    def get_match_details(self, match_id: str, provider_hint: str = None) -> Dict:
+        """Fetch comprehensive match details by ID across all providers.
+
+        Returns dict with:
+        - match_info: basic match data
+        - statistics: live match stats (shots, possession, cards, etc)
+        - odds: bookmaker odds comparison
+        - predictions: AI predictions
+        - h2h: head-to-head history (if available)
+        - lineup: team lineups (if available)
+        """
+        result = {
+            "match_info": None,
+            "statistics": None,
+            "odds": [],
+            "predictions": None,
+            "h2h": None,
+            "lineup": None,
+            "players": None,
+            "source": None
+        }
+
+        # Try each provider to find the match
+        for provider in self.providers:
+            try:
+                # Try to get match info
+                if provider.name == "API-SPORTS":
+                    # Fetch fixture details
+                    stats = provider.get_match_stats(match_id)
+                    if stats:
+                        result["statistics"] = stats
+                        result["source"] = "API-SPORTS"
+
+                    # Fetch odds
+                    odds = provider.get_odds(match_id)
+                    if odds:
+                        result["odds"].extend(odds)
+
+                    # Fetch predictions
+                    pred = provider.get_predictions(match_id)
+                    if pred:
+                        result["predictions"] = pred.to_dict() if hasattr(pred, 'to_dict') else pred
+
+                elif provider.name == "TheOddsAPI":
+                    odds = provider.get_odds(match_id)
+                    if odds:
+                        result["odds"].extend(odds)
+                        if not result["source"]:
+                            result["source"] = "TheOddsAPI"
+
+                elif provider.name == "Sportmonks":
+                    pred = provider.get_predictions(match_id)
+                    if pred:
+                        result["predictions"] = pred.to_dict() if hasattr(pred, 'to_dict') else pred
+                        if not result["source"]:
+                            result["source"] = "Sportmonks"
+
+                elif provider.name == "TheSportsDB":
+                    # TheSportsDB has event details but we need to search by ID
+                    pass
+
+            except Exception as e:
+                logger.warning(f"{provider.name} detail fetch failed for {match_id}: {e}")
+                continue
+
+        # If we found any data, mark as success
+        if result["source"] or result["odds"] or result["statistics"]:
+            result["found"] = True
+        else:
+            result["found"] = False
+
+        return result
+
+    def get_matches_by_status(self, status_filter: str = "all", sport: str = "football") -> pd.DataFrame:
+        """Fetch matches filtered by status: LIVE, SCHEDULED, FINISHED, ALL."""
+        all_matches = []
+
+        for provider in self.providers:
+            try:
+                if status_filter.lower() == "live":
+                    matches = provider.get_live_matches(sport)
+                elif status_filter.lower() == "scheduled":
+                    matches = provider.get_upcoming_matches(sport, days=7)
+                else:
+                    # For ALL or FINISHED, fetch both live and upcoming
+                    live = provider.get_live_matches(sport) or []
+                    upcoming = provider.get_upcoming_matches(sport, days=7) or []
+                    matches = live + upcoming
+
+                if matches:
+                    # Filter by status if specified
+                    if status_filter.lower() not in ["all", "live", "scheduled"]:
+                        matches = [m for m in matches if m.status.upper() == status_filter.upper()]
+                    all_matches.extend(matches)
+            except Exception as e:
+                logger.warning(f"{provider.name} status fetch failed: {e}")
+
+        # Deduplicate
+        seen = set()
+        unique = []
+        for m in all_matches:
+            if m.match_id not in seen:
+                seen.add(m.match_id)
+                unique.append(m)
+
+        if not unique:
+            return pd.DataFrame(columns=[
+                "MATCH_ID", "TIME", "LEAGUE", "MATCH", "STATUS", "SCORE", "MIN",
+                "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"
+            ])
+
+        return pd.DataFrame([m.to_dataframe_row() for m in unique])
+
+    def get_leagues(self, sport: str = "football") -> List[str]:
+        """Return list of available leagues from active providers."""
+        leagues = set()
+        for provider in self.providers:
+            try:
+                matches = provider.get_live_matches(sport) or []
+                for m in matches:
+                    if m.league and m.league != "Unknown":
+                        leagues.add(m.league)
+            except Exception:
+                continue
+        return sorted(list(leagues))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
