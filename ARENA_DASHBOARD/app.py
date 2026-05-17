@@ -822,22 +822,60 @@ def render_arena():
 
     st.markdown("<hr style='border-color: #333; margin: 15px 0;'>", unsafe_allow_html=True)
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NEW: LEAGUE DROPDOWN — Fetched from API, not scraped from matches
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # Initialize session state for league selection
+    if f'league_id_{key_prefix}' not in st.session_state:
+        st.session_state[f'league_id_{key_prefix}'] = "ALL"
+    if f'league_options_{key_prefix}' not in st.session_state:
+        st.session_state[f'league_options_{key_prefix}'] = [("ALL", "🏆 All Leagues")]
+
+    # Fetch leagues from API (cached in data layer)
+    try:
+        api_leagues = data.get_all_leagues(sport_key)
+        if api_leagues:
+            # Build dropdown options: [(league_id, display_name), ...]
+            league_options = [("ALL", "🏆 All Leagues")]
+            for league in api_leagues:
+                display = f"{league['name']}"
+                if league.get('country'):
+                    display += f" ({league['country']})"
+                league_options.append((league['id'], display))
+            st.session_state[f'league_options_{key_prefix}'] = league_options
+        else:
+            # Fallback: if API returns nothing, keep previous or default
+            league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
+    except Exception as e:
+        logger.warning(f"Failed to fetch leagues: {e}")
+        league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
+
     # Filters row
     filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2, 2, 2, 1])
 
     with filter_col1:
-        try:
-            leagues = data.router.get_leagues(sport_key)
-            if not leagues:
-                leagues = ["All Leagues"]
-        except Exception:
-            leagues = ["All Leagues"]
+        # Build display labels for selectbox
+        league_labels = [opt[1] for opt in league_options]
+        league_ids = [opt[0] for opt in league_options]
 
-        selected_league = st.selectbox(
+        # Find current index
+        current_id = st.session_state.get(f'league_id_{key_prefix}', "ALL")
+        try:
+            current_index = league_ids.index(current_id)
+        except ValueError:
+            current_index = 0
+
+        selected_label = st.selectbox(
             "🏆 SELECT LEAGUE",
-            options=leagues,
-            key=f"league_{key_prefix}"
+            options=league_labels,
+            index=current_index,
+            key=f"league_select_{key_prefix}"
         )
+
+        # Map selected label back to league_id
+        selected_league_id = league_ids[league_labels.index(selected_label)]
+        st.session_state[f'league_id_{key_prefix}'] = selected_league_id
 
     with filter_col2:
         status_options = ["ALL", "LIVE", "SCHEDULED", "FINISHED", "HALFTIME"]
@@ -859,27 +897,41 @@ def render_arena():
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 REFRESH", key=f"refresh_{key_prefix}", use_container_width=True):
             st.session_state.last_refresh = time.time()
+            # Clear league cache to force re-fetch
+            st.session_state.pop(f'league_options_{key_prefix}', None)
             st.cache_data.clear()
             st.rerun()
 
-    # Fetch matches
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Fetch matches — NOW WITH SERVER-SIDE LEAGUE FILTERING
+    # ═══════════════════════════════════════════════════════════════════════════
     try:
         if selected_status == "LIVE":
-            matches_df = data.router.get_live_matches(sport_key)
+            # NEW: Pass league_id to server-side filter
+            matches_df = data.get_live_matches_df(sport_key, selected_league_id)
         elif selected_status == "SCHEDULED":
-            matches_df = data.get_upcoming_matches_df()
+            matches_df = data.get_upcoming_matches_df(sport_key)
+            # Client-side filter for upcoming (APIs don't all support league filter for scheduled)
+            if selected_league_id != "ALL" and not matches_df.empty and "LEAGUE" in matches_df.columns:
+                # Get league name from options for string filtering fallback
+                league_name = None
+                for lid, label in league_options:
+                    if lid == selected_league_id:
+                        league_name = label.replace("🏆 ", "").split(" (")[0]
+                        break
+                if league_name:
+                    matches_df = matches_df[matches_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
         else:
-            matches_df = data.router.get_matches_by_status(selected_status, sport_key)
-
-        if selected_league != "All Leagues" and not matches_df.empty:
-            matches_df = matches_df[matches_df["LEAGUE"] == selected_league]
+            # For ALL or FINISHED, fetch with league filter
+            matches_df = data.router.get_matches_by_status(selected_status, sport_key, selected_league_id)
     except Exception as e:
         st.error(f"Error fetching matches: {str(e)[:100]}")
         matches_df = pd.DataFrame()
 
     # Display
     if matches_df.empty:
-        st.info(f"🔍 No {selected_status.lower()} matches found for {selected_sport}. Try another status or refresh.")
+        league_display = selected_label if 'selected_label' in locals() else selected_league_id
+        st.info(f"🔍 No {selected_status.lower()} matches found for {selected_sport} in {league_display}. Try another league or refresh.")
     else:
         st.markdown(f"<div style='color: #888; font-size: 0.85rem; margin-bottom: 10px;'>📊 Showing {len(matches_df)} matches</div>", unsafe_allow_html=True)
         render_match_table(matches_df, selected_view, key_prefix)
