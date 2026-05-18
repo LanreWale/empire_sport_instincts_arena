@@ -581,21 +581,19 @@ def render_live_ticker():
 # COMPREHENSIVE MATCH DETAIL PANEL
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_detail(match_id: str, match_row: pd.Series):
-    """Render comprehensive match analysis panel when a match is selected."""
+    """Render comprehensive match analysis panel with real predictions."""
+    st.markdown(f'<div class="detail-panel"><div class="detail-header">🔍 COMPREHENSIVE MATCH ANALYSIS — {match_row.get("MATCH", "Unknown Match")}</div></div>', unsafe_allow_html=True)
 
-    st.markdown(f"""
-    <div class="detail-panel">
-        <div class="detail-header">🔍 COMPREHENSIVE MATCH ANALYSIS — {match_row.get('MATCH', 'Unknown Match')}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Fetch detailed data
+    # Fetch detailed data and predictions
+    details = {"found": False}
+    prediction = None
     try:
         details = data.router.get_match_details(match_id)
-    except Exception:
-        details = {"found": False}
+        prediction = data.get_match_prediction(match_id)
+    except Exception as e:
+        st.warning(f"Prediction engine error: {str(e)[:100]}")
 
-    # Top row: Match info + Odds
+    # TOP ROW: Match info + Odds + Prediction Gauge
     col1, col2, col3 = st.columns([2, 1, 2])
 
     with col1:
@@ -605,53 +603,72 @@ def render_match_detail(match_id: str, match_row: pd.Series):
             "Status": match_row.get('STATUS', 'N/A'),
             "Score": match_row.get('SCORE', 'vs'),
             "Minute": match_row.get('MIN', '-'),
-            "Prediction": match_row.get('PREDICTION', 'Analyzing...'),
-            "Confidence": match_row.get('CONF', '-'),
-            "Signal": match_row.get('SIGNAL', '-'),
         }
         for label, value in info_data.items():
-            st.markdown(f"""
-            <div class="stat-row">
-                <span class="stat-label">{label}</span>
-                <span class="stat-value">{value}</span>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">{label}</span><span class="stat-value">{value}</span></div>', unsafe_allow_html=True)
+
+        # Prediction result
+        if prediction:
+            st.markdown("##### 🎯 AI PREDICTION")
+            st.markdown(f"Confidence: {render_confidence_badge(prediction.confidence)}", unsafe_allow_html=True)
+            st.markdown(f"Signal: {render_signal(prediction.signal)}", unsafe_allow_html=True)
+            if prediction.value_bet:
+                st.markdown(f'<div style="margin-top: 10px; padding: 8px; background: rgba(0,255,136,0.1); border-radius: 6px; font-family: Orbitron; color: #00ff88; font-size: 0.85rem;">💎 VALUE BET: {prediction.value_bet.upper()}</div>', unsafe_allow_html=True)
 
     with col2:
         st.markdown("##### ⚖️ CURRENT ODDS")
         home_odds = match_row.get('HOME', '-')
         draw_odds = match_row.get('DRAW', '-')
         away_odds = match_row.get('AWAY', '-')
-
-        st.markdown(f"""
-        <div class="odds-row">
-            <div class="odds-box">
-                <div class="odds-label">1 (Home)</div>
-                <div class="odds-value">{home_odds}</div>
-            </div>
-            <div class="odds-box">
-                <div class="odds-label">X (Draw)</div>
-                <div class="odds-value">{draw_odds}</div>
-            </div>
-            <div class="odds-box">
-                <div class="odds-label">2 (Away)</div>
-                <div class="odds-value">{away_odds}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
+        odds_html = '<div class="odds-row">'
+        odds_html += f'<div class="odds-box"><div class="odds-label">1 (Home)</div><div class="odds-value">{home_odds}</div></div>'
+        odds_html += f'<div class="odds-box"><div class="odds-label">X (Draw)</div><div class="odds-value">{draw_odds}</div></div>'
+        odds_html += f'<div class="odds-box"><div class="odds-label">2 (Away)</div><div class="odds-value">{away_odds}</div></div>'
+        odds_html += '</div>'
+        st.markdown(odds_html, unsafe_allow_html=True)
         ev_val = match_row.get('EV', '-')
-        st.markdown(f"""
-        <div style="text-align: center; padding: 10px; background: rgba(0,255,136,0.1); border-radius: 8px; margin-top: 10px;">
-            <span style="font-family: Orbitron; color: #00ff88; font-size: 1.2rem;">EV: {ev_val}</span>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div style="text-align: center; padding: 10px; background: rgba(0,255,136,0.1); border-radius: 8px; margin-top: 10px;"><span style="font-family: Orbitron; color: #00ff88; font-size: 1.2rem;">EV: {ev_val}</span></div>', unsafe_allow_html=True)
 
     with col3:
+        st.markdown("##### 📊 PROBABILITY BREAKDOWN")
+        if prediction:
+            render_prediction_gauge(prediction.home_win_prob, prediction.draw_prob, prediction.away_win_prob)
+
+            # Additional markets
+            st.markdown("##### 📈 MARKET PROBABILITIES")
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Over 2.5 Goals</span><span class="stat-value">{prediction.over_25_prob:.0f}%</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">BTTS</span><span class="stat-value">{prediction.btts_prob:.0f}%</span></div>', unsafe_allow_html=True)
+            if prediction.expected_goals_home and prediction.expected_goals_away:
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Expected Goals</span><span class="stat-value">{prediction.expected_goals_home:.2f} - {prediction.expected_goals_away:.2f}</span></div>', unsafe_allow_html=True)
+        else:
+            st.info("🔮 AI predictions loading...")
+
+    # MIDDLE ROW: Reasoning + Live Stats
+    st.markdown("<hr style='border-color: #333; margin: 15px 0;'>", unsafe_allow_html=True)
+
+    col4, col5 = st.columns(2)
+
+    with col4:
+        st.markdown("##### 🧠 ANALYSIS REASONING")
+        if prediction and prediction.reasoning:
+            for reason in prediction.reasoning:
+                st.markdown(f'<div class="reasoning-box">• {reason}</div>', unsafe_allow_html=True)
+        else:
+            st.info("Analysis reasoning will appear when sufficient data is available.")
+
+        # Form ratings
+        if prediction:
+            if prediction.home_form_rating:
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Home Form Rating</span><span class="stat-value">{prediction.home_form_rating:.0f}/100</span></div>', unsafe_allow_html=True)
+            if prediction.away_form_rating:
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Away Form Rating</span><span class="stat-value">{prediction.away_form_rating:.0f}/100</span></div>', unsafe_allow_html=True)
+            if prediction.h2h_advantage and prediction.h2h_advantage != "none":
+                st.markdown(f'<div class="stat-row"><span class="stat-label">H2H Advantage</span><span class="stat-value">{prediction.h2h_advantage.upper()}</span></div>', unsafe_allow_html=True)
+
+    with col5:
         st.markdown("##### 📊 LIVE STATISTICS")
         if details.get("statistics"):
             stats = details["statistics"]
-            # Parse API-SPORTS stats format
             try:
                 response = stats.get("response", [])
                 if response:
@@ -659,13 +676,8 @@ def render_match_detail(match_id: str, match_row: pd.Series):
                     for stat in team_stats:
                         stat_type = stat.get("type", "Unknown")
                         home_val = stat.get("value", "-")
-                        away_val = stat.get("value", "-")  # Need to parse both teams
-                        st.markdown(f"""
-                        <div class="stat-row">
-                            <span class="stat-label">{stat_type}</span>
-                            <span class="stat-value">{home_val} - {away_val}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        away_val = stat.get("value", "-")
+                        st.markdown(f'<div class="stat-row"><span class="stat-label">{stat_type}</span><span class="stat-value">{home_val} - {away_val}</span></div>', unsafe_allow_html=True)
                 else:
                     st.info("Statistics format not recognized")
             except Exception:
@@ -673,12 +685,12 @@ def render_match_detail(match_id: str, match_row: pd.Series):
         else:
             st.info("📡 Live statistics not yet available for this match")
 
-    # Bottom row: Odds comparison + Predictions
+    # BOTTOM ROW: Odds Comparison + Bookmaker Grid
     st.markdown("<hr style='border-color: #333; margin: 15px 0;'>", unsafe_allow_html=True)
 
-    col4, col5 = st.columns(2)
+    col6, col7 = st.columns(2)
 
-    with col4:
+    with col6:
         st.markdown("##### 📈 ODDS COMPARISON")
         try:
             odds_df = data.get_odds_comparison(match_id)
@@ -689,113 +701,19 @@ def render_match_detail(match_id: str, match_row: pd.Series):
         except Exception:
             st.info("Odds comparison unavailable")
 
-    with col5:
-        st.markdown("##### 🔮 AI PREDICTIONS")
+    with col7:
+        st.markdown("##### 🔮 MODEL SOURCES")
+        sources = []
         if details.get("predictions"):
-            pred = details["predictions"]
-            if isinstance(pred, dict):
-                home_prob = pred.get("home_win_prob", "N/A")
-                draw_prob = pred.get("draw_prob", "N/A")
-                away_prob = pred.get("away_win_prob", "N/A")
-
-                pred_data = {
-                    "Home Win": f"{home_prob}%" if home_prob != "N/A" else "Analyzing...",
-                    "Draw": f"{draw_prob}%" if draw_prob != "N/A" else "Analyzing...",
-                    "Away Win": f"{away_prob}%" if away_prob != "N/A" else "Analyzing...",
-                }
-                for label, value in pred_data.items():
-                    st.markdown(f"""
-                    <div class="stat-row">
-                        <span class="stat-label">{label}</span>
-                        <span class="stat-value">{value}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("Prediction data format not recognized")
-        else:
-            st.info("🔮 AI predictions not yet available for this match")
+            sources.append("✅ API-SPORTS Predictions")
+        if prediction and prediction.expected_goals_home:
+            sources.append("✅ Poisson xG Model")
+        sources.append("✅ Implied Probability (Odds)")
+        sources.append("✅ Market EV Calculator")
+        for src in sources:
+            st.markdown(f'<div class="reasoning-box">{src}</div>', unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MAIN ARENA VIEW — SPORT SELECTOR + LEAGUE FILTER + MATCH STATUS + MATCH TABLE
-# ══════════════════════════════════════════════════════════════════════════════
-
-SPORT_OPTIONS = {
-    "⚽ FOOTBALL": "football",
-    "🏀 BASKETBALL": "basketball",
-    "🏈 NFL": "americanfootball",
-    "🎾 TENNIS": "tennis",
-    "🏒 NHL": "icehockey",
-    "🏀 NBA": "basketball_nba"
-}
-
-
-def render_match_table(matches_df: pd.DataFrame, view_mode: str, key_prefix: str):
-    """Render matches in table or card view."""
-    if matches_df.empty:
-        return
-
-    if view_mode == "📋 TABLE VIEW":
-        # Use st.table for better CSS control, or styled dataframe
-        display_df = matches_df.drop(columns=["MATCH_ID"]) if "MATCH_ID" in matches_df.columns else matches_df
-
-        # Apply dark styling via Pandas Styler
-        styled = display_df.style.set_properties(**{
-            'background-color': '#1a1a2e',
-            'color': '#FFD700',
-            'font-family': 'Rajdhani, sans-serif',
-            'font-size': '0.95rem',
-            'text-align': 'center'
-        }).set_table_styles([
-            {'selector': 'th', 'props': [
-                ('background', 'linear-gradient(135deg, #D4AF37 0%, #B8860B 100%)'),
-                ('color', '#000'),
-                ('font-family', 'Orbitron, sans-serif'),
-                ('font-weight', '900'),
-                ('text-transform', 'uppercase'),
-                ('letter-spacing', '1px'),
-                ('padding', '12px'),
-                ('border', '1px solid #D4AF37')
-            ]},
-            {'selector': 'td', 'props': [
-                ('background-color', '#1a1a2e'),
-                ('color', '#FFD700'),
-                ('border-bottom', '1px solid #2a2a3e'),
-                ('padding', '10px')
-            ]},
-            {'selector': 'tr:nth-child(even) td', 'props': [
-                ('background-color', '#151525')
-            ]},
-            {'selector': 'tr:hover td', 'props': [
-                ('background', 'rgba(212, 175, 55, 0.2)'),
-                ('color', '#FFFFFF'),
-                ('font-weight', '700')
-            ]}
-        ])
-
-        st.table(styled)
-
-        # Selection via selectbox below table
-        match_options = [f"{row['MATCH']} ({row['STATUS']})" for _, row in matches_df.iterrows()]
-        selected = st.selectbox("🔍 CLICK TO VIEW MATCH DETAILS", options=["— Select a match —"] + match_options, key=f"select_{key_prefix}")
-
-        if selected != "— Select a match —":
-            idx = match_options.index(selected)
-            selected_match = matches_df.iloc[idx]
-            match_id = selected_match.get("MATCH_ID", "")
-            if match_id:
-                render_match_detail(match_id, selected_match)
-
-    else:  # CARD VIEW
-        for idx, (_, match) in enumerate(matches_df.iterrows()):
-            with st.expander(f"{match.get('MATCH', 'vs')} — {match.get('STATUS', '')}", expanded=False):
-                match_id = match.get("MATCH_ID", "")
-                if match_id:
-                    render_match_detail(match_id, match)
-                else:
-                    st.info("Match details unavailable")
-
 
 def render_arena():
     st.markdown('<div class="section-header">🏟️ EMPIRE ARENA</div>', unsafe_allow_html=True)
