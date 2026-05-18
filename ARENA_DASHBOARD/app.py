@@ -6,7 +6,6 @@ World-Class Professional Command Center
 import sys
 import os
 
-# Add project root to Python path BEFORE importing empire_data_layer
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
@@ -19,7 +18,6 @@ from datetime import datetime, timedelta
 import time
 import logging
 
-# EMPIRE Live Data Integration — imports from project root
 from empire_data_layer import EmpireDashboardData, APIConfig
 
 logger = logging.getLogger(__name__)
@@ -32,20 +30,8 @@ st.set_page_config(
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LIVE DATA INITIALIZATION
-# ════════════════════════════════════════════════════════════════════════════════
-data = EmpireDashboardData()
-
-REFRESH_INTERVAL = 15  # seconds
-
-if 'last_refresh' not in st.session_state:
-    st.session_state.last_refresh = time.time()
-
-elapsed = time.time() - st.session_state.last_refresh
-
-# ══════════════════════════════════════════════════════════════════════════════
 # PREMIUM DARK GOLD COMMAND CENTER CSS
-# ══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 st.html("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap');
@@ -394,190 +380,17 @@ st.html("""
 </style>
 """)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# AI ENGINE STATUS & GLOBAL CLOCK
-# ══════════════════════════════════════════════════════════════════════════════
-def render_ai_status():
-    col1, col2, col3 = st.columns([2, 1, 2])
-    with col2:
-        st.markdown('<div class="ai-status">🤖 AI ENGINE ONLINE 24/7</div>', unsafe_allow_html=True)
+# ═══════════════════════════════════════════════════════════════════════════════
+# LIVE DATA INITIALIZATION
+# ════════════════════════════════════════════════════════════════════════════════
+data = EmpireDashboardData()
 
-    now = datetime.now()
-    cities = [
-        ("LONDON", now + timedelta(hours=1)),
-        ("NEW YORK", now - timedelta(hours=5)),
-        ("TOKYO", now + timedelta(hours=9)),
-        ("SYDNEY", now + timedelta(hours=10)),
-        ("LAGOS", now + timedelta(hours=1)),
-    ]
-    clock_text = " | ".join([f"{city}: {dt.strftime('%H:%M')}" for city, dt in cities])
-    st.markdown(f'<div class="world-clock">🌍 {clock_text}</div>', unsafe_allow_html=True)
+REFRESH_INTERVAL = 15
 
-# ══════════════════════════════════════════════════════════════════════════════
-# HEADER
-# ══════════════════════════════════════════════════════════════════════════════
-def render_header():
-    logo_path = Path("BRAND_ASSET/empire_logo_primary.png")
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time.time()
 
-    if logo_path.exists():
-        with open(logo_path, "rb") as f:
-            img_bytes = f.read()
-        b64 = base64.b64encode(img_bytes).decode()
-        logo_html = f'<img src="data:image/png;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
-    else:
-        svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/><stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/></linearGradient></defs><rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/><text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text><text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text></svg>"""
-        b64 = base64.b64encode(svg.encode()).decode()
-        logo_html = f'<img src="data:image/svg+xml;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
-
-    st.markdown(f"""
-    <div class="logo-center">
-        {logo_html}
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="tagline-bold">EMPIRE SPORT INSTINCTS ARENA</div>', unsafe_allow_html=True)
-    st.markdown('<div class="tagline-sub">Advanced Research & Evaluation System | Where Data Meets Instinct</div>', unsafe_allow_html=True)
-    st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
-
-    render_ai_status()
-
-    # LIVE / DEMO MODE BANNER
-    try:
-        has_live = data.is_live
-        if has_live:
-            provider_name = data.router.active_provider.name if data.router.active_provider else "Unknown"
-            st.markdown(f"""
-            <div style="background: linear-gradient(90deg, #00ff88 0%, #00cc6a 100%); 
-                        color: #000; font-family: Orbitron; font-size: 1rem; 
-                        padding: 12px 20px; border-radius: 8px; text-align: center;
-                        font-weight: 900; letter-spacing: 3px; margin: 10px 0;
-                        box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);">
-                🟢 LIVE MODE — Connected to {provider_name} | Real data streaming
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="background: linear-gradient(90deg, #B8860B 0%, #FFD700 100%); 
-                        color: #000; font-family: Orbitron; font-size: 1rem; 
-                        padding: 12px 20px; border-radius: 8px; text-align: center;
-                        font-weight: 900; letter-spacing: 3px; margin: 10px 0;
-                        box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);">
-                ⚠️ DEMO MODE — No APIs connected | Check .env keys & internet
-            </div>
-            """, unsafe_allow_html=True)
-    except Exception:
-        st.markdown("""
-        <div style="background: linear-gradient(90deg, #ff4444 0%, #cc0000 100%); 
-                    color: #fff; font-family: Orbitron; font-size: 1rem; 
-                    padding: 12px 20px; border-radius: 8px; text-align: center;
-                    font-weight: 900; letter-spacing: 3px; margin: 10px 0;">
-            🔴 SYSTEM ERROR — Cannot initialize data layer
-        </div>
-        """, unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR
-# ══════════════════════════════════════════════════════════════════════════════
-def render_sidebar():
-    with st.sidebar:
-        sidebar_logo_path = Path("BRAND_ASSET/empire_logo_arena.png")
-        if sidebar_logo_path.exists():
-            with open(sidebar_logo_path, "rb") as f:
-                sb_img = f.read()
-            sb_b64 = base64.b64encode(sb_img).decode()
-            st.markdown(f'<div style="text-align:center; margin-bottom:10px;"><img src="data:image/png;base64,{sb_b64}" style="width:85%; max-height:100px; object-fit:contain; display:block; margin:0 auto;"></div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div style="text-align:center; color:#D4AF37; font-family:Orbitron; font-size:14px; font-weight:900; margin-bottom:10px;">EMPIRE</div>', unsafe_allow_html=True)
-        st.markdown('<h2 style="text-align:center; font-size:1.2rem;">COMMAND CENTER</h2>', unsafe_allow_html=True)
-
-        st.markdown("""
-        <div style="background: rgba(0,255,136,0.1); border: 1px solid #00ff88; border-radius: 8px; padding: 10px; margin: 10px 0;">
-            <div style="color: #00ff88; font-family: 'Orbitron'; font-size: 0.8rem; text-align: center;">
-                🤖 INSTINCT BOT v2.0<br>
-                <span style="color: #888; font-size: 0.7rem;">SCANNING 847 MATCHES</span><br>
-                <span style="color: #00ff88; animation: blink 1s infinite;">● LIVE</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.subheader("⚡ SYSTEM STATUS")
-
-        st.markdown('<div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; margin: 8px 0;">', unsafe_allow_html=True)
-
-        provider_status = []
-        try:
-            statuses = data.router.get_provider_status()
-            for s in statuses:
-                if "ONLINE" in s["status"]:
-                    icon, color = "🟢", "#00ff88"
-                elif "EMPTY" in s["status"]:
-                    icon, color = "🟡", "#FFD700"
-                else:
-                    icon, color = "🔴", "#ff4444"
-                provider_status.append((f"{icon} {s['name']}", s["status"].split(" — ")[-1], color))
-        except Exception as e:
-            provider_status = [("🔴 Router", f"Error: {str(e)[:40]}", "#ff4444")]
-
-        for name, status, color in provider_status:
-            st.markdown(f'<div style="font-family: Orbitron; font-size: 0.7rem; color: {color}; padding: 2px 0;">{name}: {status}</div>', unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("DATA", "ACTIVE", delta="●", delta_color="normal")
-        with col2:
-            st.metric("MODELS", "ONLINE", delta="●", delta_color="normal")
-
-        st.subheader("🛡️ RISK CONTROLS")
-        st.slider("KELLY %", 0.05, 0.50, 0.25, 0.05, format="%.0f%%")
-        st.slider("MAX BET", 0.01, 0.10, 0.03, 0.01, format="%.0f%%")
-        st.slider("MIN EV", 0.01, 0.10, 0.02, 0.01, format="%.0f%%")
-
-        if st.button("🚨 EMERGENCY STOP", type="primary", use_container_width=True):
-            st.error("ALL SYSTEMS HALTED")
-
-        st.markdown("<hr style='border-color: #333; margin: 15px 0;'>", unsafe_allow_html=True)
-        st.subheader("📡 API CONNECTION LOG")
-
-        try:
-            log_df = data.router.get_connection_log_df()
-            if not log_df.empty:
-                def color_status(val):
-                    if val == "SUCCESS":
-                        return "color: #00ff88; font-weight: 700;"
-                    elif val in ["FAIL", "ERROR", "TIMEOUT"]:
-                        return "color: #ff4444; font-weight: 700;"
-                    elif val == "EMPTY":
-                        return "color: #FFD700; font-weight: 700;"
-                    return "color: #888;"
-
-                styled_log = log_df.style.map(color_status, subset=["STATUS"])
-                st.dataframe(styled_log, use_container_width=True, hide_index=True, height=250)
-            else:
-                st.info("No connection attempts yet.")
-        except Exception as e:
-            st.warning(f"Log unavailable: {str(e)[:50]}")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# LIVE MATCH TICKER
-# ══════════════════════════════════════════════════════════════════════════════
-def render_live_ticker():
-    try:
-        live_df = data.get_live_matches_df()
-        if not live_df.empty:
-            matches = []
-            for _, row in live_df.head(6).iterrows():
-                status_icon = "🔴" if "LIVE" in str(row.get("STATUS", "")) else "⏳"
-                match_text = f"{status_icon} {row.get('LEAGUE', 'Unknown')}: {row.get('HOME_TEAM', '')} vs {row.get('AWAY_TEAM', '')} ({row.get('STATUS', '')})"
-                matches.append(match_text)
-            ticker_text = "    ★    ".join(matches)
-        else:
-            ticker_text = "📡 Connecting to live data feeds...    ★    🔄 Refreshing match data..."
-    except Exception:
-        ticker_text = "📡 Connecting to live data feeds...    ★    🔄 Refreshing match data..."
-
-    st.markdown(f'<div class="ticker"><div class="ticker-text">{ticker_text}</div></div>', unsafe_allow_html=True)
+elapsed = time.time() - st.session_state.last_refresh
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SPORT CONFIGURATION
@@ -666,32 +479,286 @@ SPORT_OPTIONS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH TABLE RENDERER — Clickable cards with league-aware filtering
+# HEADER
+# ══════════════════════════════════════════════════════════════════════════════
+def render_header():
+    logo_path = Path("BRAND_ASSET/empire_logo_primary.png")
+
+    if logo_path.exists():
+        with open(logo_path, "rb") as f:
+            img_bytes = f.read()
+        b64 = base64.b64encode(img_bytes).decode()
+        logo_html = f'<img src="data:image/png;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
+    else:
+        svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/><stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/></linearGradient></defs><rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/><text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text><text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text></svg>"""
+        b64 = base64.b64encode(svg.encode()).decode()
+        logo_html = f'<img src="data:image/svg+xml;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
+
+    st.markdown(f"""
+    <div class="logo-center">
+        {logo_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="tagline-bold">EMPIRE SPORT INSTINCTS ARENA</div>', unsafe_allow_html=True)
+    st.markdown('<div class="tagline-sub">Advanced Research & Evaluation System | Where Data Meets Instinct</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
+
+    # AI STATUS
+    col1, col2, col3 = st.columns([2, 1, 2])
+    with col2:
+        st.markdown('<div class="ai-status">🤖 AI ENGINE ONLINE 24/7</div>', unsafe_allow_html=True)
+
+    # WORLD CLOCK
+    now = datetime.now()
+    cities = [
+        ("LONDON", now + timedelta(hours=1)),
+        ("NEW YORK", now - timedelta(hours=5)),
+        ("TOKYO", now + timedelta(hours=9)),
+        ("SYDNEY", now + timedelta(hours=10)),
+        ("LAGOS", now + timedelta(hours=1)),
+    ]
+    clock_text = " | ".join([f"{city}: {dt.strftime('%H:%M')}" for city, dt in cities])
+    st.markdown(f'<div class="world-clock">🌍 {clock_text}</div>', unsafe_allow_html=True)
+
+    # LIVE / DEMO MODE BANNER
+    try:
+        has_live = data.is_live
+        if has_live:
+            provider_name = data.router.active_provider.name if data.router.active_provider else "Unknown"
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #00ff88 0%, #00cc6a 100%); 
+                        color: #000; font-family: Orbitron; font-size: 1rem; 
+                        padding: 12px 20px; border-radius: 8px; text-align: center;
+                        font-weight: 900; letter-spacing: 3px; margin: 10px 0;
+                        box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);">
+                🟢 LIVE MODE — Connected to {provider_name} | Real data streaming
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background: linear-gradient(90deg, #B8860B 0%, #FFD700 100%); 
+                        color: #000; font-family: Orbitron; font-size: 1rem; 
+                        padding: 12px 20px; border-radius: 8px; text-align: center;
+                        font-weight: 900; letter-spacing: 3px; margin: 10px 0;
+                        box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);">
+                ⚠️ DEMO MODE — No APIs connected | Check .env keys & internet
+            </div>
+            """, unsafe_allow_html=True)
+    except Exception:
+        st.markdown("""
+        <div style="background: linear-gradient(90deg, #ff4444 0%, #cc0000 100%); 
+                    color: #fff; font-family: Orbitron; font-size: 1rem; 
+                    padding: 12px 20px; border-radius: 8px; text-align: center;
+                    font-weight: 900; letter-spacing: 3px; margin: 10px 0;">
+            🔴 SYSTEM ERROR — Cannot initialize data layer
+        </div>
+        """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SIDEBAR — FULL TACTICAL CONTROLS (from Image 2)
+# ══════════════════════════════════════════════════════════════════════════════
+def render_sidebar():
+    with st.sidebar:
+        # Logo
+        sidebar_logo_path = Path("BRAND_ASSET/empire_logo_arena.png")
+        if sidebar_logo_path.exists():
+            with open(sidebar_logo_path, "rb") as f:
+                sb_img = f.read()
+            sb_b64 = base64.b64encode(sb_img).decode()
+            st.markdown(f'<div style="text-align:center; margin-bottom:10px;"><img src="data:image/png;base64,{sb_b64}" style="width:85%; max-height:100px; object-fit:contain; display:block; margin:0 auto;"></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="text-align:center; color:#D4AF37; font-family:Orbitron; font-size:14px; font-weight:900; margin-bottom:10px;">EMPIRE</div>', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align:center; font-size:1.2rem;">COMMAND CENTER</h2>', unsafe_allow_html=True)
+
+        # INSTINCT BOT v2.0
+        st.markdown("""
+        <div style="background: rgba(0,255,136,0.1); border: 1px solid #00ff88; border-radius: 8px; padding: 10px; margin: 10px 0;">
+            <div style="color: #00ff88; font-family: 'Orbitron'; font-size: 0.8rem; text-align: center;">
+                🤖 INSTINCT BOT v2.0<br>
+                <span style="color: #888; font-size: 0.7rem;">SCANNING LIVE MATCHES</span><br>
+                <span style="color: #00ff88; animation: blink 1s infinite;">● LIVE</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # SYSTEM STATUS
+        st.subheader("⚡ SYSTEM STATUS")
+        st.markdown('<div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; margin: 8px 0;">', unsafe_allow_html=True)
+
+        provider_status = []
+        try:
+            statuses = data.router.get_provider_status()
+            for s in statuses:
+                if "ONLINE" in s["status"]:
+                    icon, color = "🟢", "#00ff88"
+                elif "EMPTY" in s["status"]:
+                    icon, color = "🟡", "#FFD700"
+                else:
+                    icon, color = "🔴", "#ff4444"
+                provider_status.append((f"{icon} {s['name']}", s["status"].split(" — ")[-1], color))
+        except Exception as e:
+            provider_status = [("🔴 Router", f"Error: {str(e)[:40]}", "#ff4444")]
+
+        for name, status, color in provider_status:
+            st.markdown(f'<div style="font-family: Orbitron; font-size: 0.7rem; color: {color}; padding: 2px 0;">{name}: {status}</div>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # DATA / MODELS METRICS
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("DATA", "ACTIVE", delta="●", delta_color="normal")
+        with col2:
+            st.metric("MODELS", "ONLINE", delta="●", delta_color="normal")
+
+        # RISK CONTROLS
+        st.subheader("🛡️ RISK CONTROLS")
+        st.slider("KELLY %", 0.05, 0.50, 0.25, 0.05, format="%.0f%%", key="kelly_slider")
+        st.slider("MAX BET", 0.01, 0.10, 0.03, 0.01, format="%.0f%%", key="maxbet_slider")
+        st.slider("MIN EV", 0.01, 0.10, 0.02, 0.01, format="%.0f%%", key="minev_slider")
+
+        # EMERGENCY STOP
+        if st.button("🚨 EMERGENCY STOP", type="primary", use_container_width=True):
+            st.error("ALL SYSTEMS HALTED")
+
+        st.markdown("<hr style='border-color: #333; margin: 15px 0;'>", unsafe_allow_html=True)
+
+        # API CONNECTION LOG
+        st.subheader("📡 API CONNECTION LOG")
+        try:
+            log_df = data.router.get_connection_log_df()
+            if not log_df.empty:
+                def color_status(val):
+                    if val == "SUCCESS":
+                        return "color: #00ff88; font-weight: 700;"
+                    elif val in ["FAIL", "ERROR", "TIMEOUT"]:
+                        return "color: #ff4444; font-weight: 700;"
+                    elif val == "EMPTY":
+                        return "color: #FFD700; font-weight: 700;"
+                    return "color: #888;"
+
+                styled_log = log_df.style.map(color_status, subset=["STATUS"])
+                st.markdown("""
+                <div style="background: linear-gradient(180deg, #0a0a1a 0%, #0f0f1a 100%); 
+                            border: 1px solid #2a2a3e; border-radius: 8px; padding: 5px; margin: 5px 0;">
+                </div>
+                """, unsafe_allow_html=True)
+                st.dataframe(styled_log, use_container_width=True, hide_index=True, height=250)
+            else:
+                st.info("No connection attempts yet.")
+        except Exception as e:
+            st.warning(f"Log unavailable: {str(e)[:50]}")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LIVE MATCH TICKER
+# ══════════════════════════════════════════════════════════════════════════════
+def render_live_ticker():
+    try:
+        live_df = data.get_live_matches_df()
+        if not live_df.empty:
+            matches = []
+            for _, row in live_df.head(6).iterrows():
+                status_icon = "🔴" if "LIVE" in str(row.get("STATUS", "")) else "⏳"
+                home = str(row.get("HOME_TEAM", row.get("MATCH", "")).split(" vs ")[0] if " vs " in str(row.get("MATCH", "")) else row.get("HOME_TEAM", "Home"))
+                away = str(row.get("AWAY_TEAM", row.get("MATCH", "")).split(" vs ")[-1] if " vs " in str(row.get("MATCH", "")) else row.get("AWAY_TEAM", "Away"))
+                match_text = f"{status_icon} {row.get('LEAGUE', 'Unknown')}: {home} vs {away} ({row.get('STATUS', '')})"
+                matches.append(match_text)
+            ticker_text = "    ★    ".join(matches)
+        else:
+            ticker_text = "📡 Connecting to live data feeds...    ★    🔄 Refreshing match data..."
+    except Exception:
+        ticker_text = "📡 Connecting to live data feeds...    ★    🔄 Refreshing match data..."
+
+    st.markdown(f'<div class="ticker"><div class="ticker-text">{ticker_text}</div></div>', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ARENA CONTROLS — Sidebar tactical controls (from Image 2)
+# ══════════════════════════════════════════════════════════════════════════════
+def render_arena_controls():
+    st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
+    st.subheader("🏟️ ARENA CONTROLS")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        selected_sport = st.selectbox(
+            "SPORT",
+            list(SPORT_OPTIONS.keys()),
+            index=0,
+            key="sport_select"
+        )
+
+    with col2:
+        sport_config = SPORT_OPTIONS[selected_sport]
+        try:
+            all_leagues = data.get_all_leagues(sport_config["sport_type"].lower())
+            league_options = [("ALL", "All Leagues")]
+            for league in all_leagues:
+                league_options.append((league.get("id", ""), league.get("name", "Unknown")))
+            if not league_options or len(league_options) == 1:
+                league_options = [
+                    ("ALL", "All Leagues"),
+                    (sport_config["league_id"], sport_config["league_name"]),
+                ]
+        except Exception:
+            league_options = [
+                ("ALL", "All Leagues"),
+                (sport_config["league_id"], sport_config["league_name"]),
+            ]
+        selected_league = st.selectbox(
+            "LEAGUE",
+            options=[opt[1] for opt in league_options],
+            index=0,
+            key="league_select"
+        )
+        selected_league_id = next((opt[0] for opt in league_options if opt[1] == selected_league), "ALL")
+
+    with col3:
+        status_options = ["ALL", "LIVE", "SCHEDULED", "FINISHED"]
+        selected_status = st.selectbox(
+            "STATUS",
+            status_options,
+            index=0,
+            key="status_select"
+        )
+
+    with col4:
+        view_options = ["ALL MATCHES", "LIVE NOW", "UPCOMING", "FINISHED", "VALUE BETS"]
+        selected_view = st.selectbox(
+            "VIEW",
+            view_options,
+            index=0,
+            key="view_select"
+        )
+
+    if st.button("🔄 REFRESH DATA", type="primary", use_container_width=True):
+        st.session_state.last_refresh = time.time()
+        st.rerun()
+
+    return selected_sport, selected_league_id, selected_status, selected_view
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MATCH TABLE RENDERER
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_table(matches_df, selected_view, key_prefix, selected_league_id, selected_status):
-    """
-    Render clickable match cards. Clicking a card stores match_id in session_state
-    for detailed view rendering.
-    """
     if matches_df is None or matches_df.empty:
         st.info("No matches available for the selected criteria.")
         return
 
     df = matches_df.copy()
 
-    # ─── Auto-detect columns ─────────────────────────────────────────────────
+    # Auto-detect columns
     home_col = away_col = home_score_col = away_score_col = score_col = None
     status_col = league_col = league_id_col = date_col = time_col = match_id_col = None
 
     for col in df.columns:
         cu = str(col).upper().replace("_", "").replace(" ", "")
-        # EXACT matches for team name columns (prioritize these)
         if not home_col and cu in ['HOMETEAM', 'STRHOMETEAM', 'TEAM1NAME', 'HOMETEAMNAME']:
             home_col = col
         elif not away_col and cu in ['AWAYTEAM', 'STRAWAYTEAM', 'TEAM2NAME', 'AWAYTEAMNAME']:
             away_col = col
 
-    # Second pass: broader matching if exact not found, but EXCLUDE odds/score columns
     if not home_col or not away_col:
         for col in df.columns:
             cu = str(col).upper().replace("_", "").replace(" ", "")
@@ -700,12 +767,10 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
             elif not away_col and 'AWAY' in cu and 'ODDS' not in cu and 'SCORE' not in cu and 'WIN' not in cu:
                 away_col = col
 
-    # Third pass: parse MATCH column as fallback
     if not home_col or not away_col:
         if 'MATCH' in df.columns:
             match_col = 'MATCH'
         else:
-            # Search for any column containing " vs "
             match_col = None
             for col in df.columns:
                 sample = str(df[col].iloc[0]) if len(df) > 0 else ""
@@ -736,21 +801,16 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
         elif not match_id_col and any(x in cu for x in ['MATCHID', 'IDMATCH', 'MATCH_ID', 'ID_MATCH', 'EVENTID', 'IDEVENT']):
             match_id_col = col
 
-    # ─── Fallback debug ────────────────────────────────────────────────────────
     if not home_col and not away_col and not match_col:
         st.warning(f"⚠️ Could not identify team columns. Available: {list(df.columns)}")
         st.dataframe(df.head(3), use_container_width=True, hide_index=True)
         return
 
-    # ─── Client-side league filter (if server didn't filter) ──────────────────
     if selected_league_id != "ALL" and league_id_col:
         df = df[df[league_id_col].astype(str) == str(selected_league_id)]
 
-    # ─── Client-side status filter ───────────────────────────────────────────
     if selected_status != "ALL" and status_col:
-        status_mask = df[status_col].astype(str).str.upper().str.contains(
-            selected_status, na=False
-        )
+        status_mask = df[status_col].astype(str).str.upper().str.contains(selected_status, na=False)
         df = df[status_mask]
 
     if df.empty:
@@ -759,9 +819,7 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
 
     st.markdown(f"<div style='color:#888; font-size:0.85rem; margin-bottom:10px;'>📊 Showing {len(df)} matches</div>", unsafe_allow_html=True)
 
-    # ─── Render clickable match cards ────────────────────────────────────────
     for idx, row in df.iterrows():
-        # Extract team names
         if home_col and away_col:
             home = str(row.get(home_col, "TBD"))
             away = str(row.get(away_col, "TBD"))
@@ -777,12 +835,10 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
         else:
             home = away = "TBD"
 
-        # Clean up
         for val in [home, away]:
             if val in ["nan", "None", "null", "NaT", "-", ""]:
                 val = "TBD"
 
-        # Score
         if score_col:
             score = str(row.get(score_col, "vs"))
         elif home_score_col and away_score_col:
@@ -802,7 +858,6 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
             if val in ["nan", "None", "null", "NaT"]:
                 val = ""
 
-        # Status badge
         su = status.upper()
         if any(x in su for x in ["LIVE", "IN PLAY", "INPLAY", "1H", "2H", "HT"]):
             status_color, status_bg, status_text = "#00FF88", "rgba(0,255,136,0.15)", "● LIVE"
@@ -811,7 +866,6 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
         else:
             status_color, status_bg, status_text = "#FFAA00", "rgba(255,170,0,0.15)", "UPCOMING"
 
-        # Clickable card
         card_html = f"""
         <div style="
             background: linear-gradient(135deg, rgba(20,25,40,0.9), rgba(10,15,30,0.95));
@@ -844,7 +898,6 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
         """
         st.markdown(card_html, unsafe_allow_html=True)
 
-        # Streamlit button for actual click handling
         btn_cols = st.columns([6, 1])
         with btn_cols[1]:
             if st.button("🔍", key=f"view_{key_prefix}_{match_id}_{idx}", help="View match details"):
@@ -865,7 +918,6 @@ def render_match_analysis_panel(match_id: str, match_row: dict):
     """
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
 
-    # Header
     home_team = st.session_state.get("selected_match_home", "Home")
     away_team = st.session_state.get("selected_match_away", "Away")
     st.markdown(f"""
@@ -898,7 +950,6 @@ def render_match_analysis_panel(match_id: str, match_row: dict):
             error_msg = f"Details API error: {str(e)[:100]}"
         logger.error(f"Details fetch failed for {match_id}: {e}")
 
-    # ─── Show error if both failed ───────────────────────────────────────────
     if error_msg and not prediction and not details:
         st.warning(f"⚠️ {error_msg}")
         st.info("Some data may be unavailable. The APIs may have no data for this match, or keys may be missing.")
@@ -1117,79 +1168,13 @@ def render_match_analysis_panel(match_id: str, match_row: dict):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ARENA CONTROLS
-# ══════════════════════════════════════════════════════════════════════════════
-def render_arena_controls():
-    st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
-    st.subheader("🏟️ ARENA CONTROLS")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        selected_sport = st.selectbox(
-            "SPORT",
-            list(SPORT_OPTIONS.keys()),
-            index=0,
-            key="sport_select"
-        )
-
-    with col2:
-        sport_config = SPORT_OPTIONS[selected_sport]
-        try:
-            all_leagues = data.get_all_leagues(sport_config["sport_type"].lower())
-            league_options = [("ALL", "All Leagues")]
-            for league in all_leagues:
-                league_options.append((league.get("id", ""), league.get("name", "Unknown")))
-            if not league_options or len(league_options) == 1:
-                league_options = [
-                    ("ALL", "All Leagues"),
-                    (sport_config["league_id"], sport_config["league_name"]),
-                ]
-        except Exception:
-            league_options = [
-                ("ALL", "All Leagues"),
-                (sport_config["league_id"], sport_config["league_name"]),
-            ]
-        selected_league = st.selectbox(
-            "LEAGUE",
-            options=[opt[1] for opt in league_options],
-            index=0,
-            key="league_select"
-        )
-        selected_league_id = next((opt[0] for opt in league_options if opt[1] == selected_league), "ALL")
-
-    with col3:
-        status_options = ["ALL", "LIVE", "SCHEDULED", "FINISHED"]
-        selected_status = st.selectbox(
-            "STATUS",
-            status_options,
-            index=0,
-            key="status_select"
-        )
-
-    with col4:
-        view_options = ["ALL MATCHES", "LIVE NOW", "UPCOMING", "FINISHED", "VALUE BETS"]
-        selected_view = st.selectbox(
-            "VIEW",
-            view_options,
-            index=0,
-            key="view_select"
-        )
-
-    if st.button("🔄 REFRESH DATA", type="primary", use_container_width=True):
-        st.session_state.last_refresh = time.time()
-        st.rerun()
-
-    return selected_sport, selected_league_id, selected_status, selected_view
-
-# ══════════════════════════════════════════════════════════════════════════════
 # MAIN ARENA RENDER
 # ══════════════════════════════════════════════════════════════════════════════
 def render_arena():
     selected_sport, selected_league_id, selected_status, selected_view = render_arena_controls()
     sport_config = SPORT_OPTIONS[selected_sport]
 
-    # ─── Fetch real match data based on view ─────────────────────────────────
+    # Fetch real match data based on view
     matches_df = None
     try:
         if selected_view == "LIVE NOW":
@@ -1200,7 +1185,7 @@ def render_arena():
             matches_df = data.router.get_matches_by_status("FINISHED", sport_config["sport_type"].lower(), selected_league_id)
         elif selected_view == "VALUE BETS":
             matches_df = data.get_value_opportunities_df()
-        else:  # ALL MATCHES
+        else:
             live = data.get_live_matches_df(sport_config["sport_type"].lower(), selected_league_id)
             upcoming = data.get_upcoming_matches_df(sport_config["sport_type"].lower(), selected_league_id)
             if not live.empty and not upcoming.empty:
@@ -1214,7 +1199,6 @@ def render_arena():
         logger.error(f"Match fetch error: {e}")
         matches_df = pd.DataFrame()
 
-    # ─── Render match table ──────────────────────────────────────────────────
     render_match_table(matches_df, selected_view, "main", selected_league_id, selected_status)
 
 # ══════════════════════════════════════════════════════════════════════════════
