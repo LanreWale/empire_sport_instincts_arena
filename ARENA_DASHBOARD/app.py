@@ -803,65 +803,100 @@ SPORT_OPTIONS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH TABLE RENDERER — Inserted between SPORT_OPTIONS and render_arena()
+# MATCH TABLE RENDERER — Auto-detects columns from any API format
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_table(matches_df, selected_view, key_prefix):
     """
     Render a styled match/fixture table with team logos, scores, and status.
+    Handles any column naming from different APIs (TheSportsDB, API-Sports, etc.)
     """
     if matches_df is None or matches_df.empty:
         st.info("No matches available for the selected criteria.")
         return
 
-    # Column mapping for different data sources
-    col_map = {
-        "HomeTeam": "home_team",
-        "AwayTeam": "away_team",
-        "home": "home_team",
-        "away": "away_team",
-        "strHomeTeam": "home_team",
-        "strAwayTeam": "away_team",
-        "intHomeScore": "home_score",
-        "intAwayScore": "away_score",
-        "home_score": "home_score",
-        "away_score": "away_score",
-        "strStatus": "status",
-        "status": "status",
-        "dateEvent": "match_date",
-        "strTime": "match_time",
-        "match_date": "match_date",
-        "match_time": "match_time",
-        "strLeague": "league",
-        "strSeason": "season",
-    }
-
     df = matches_df.copy()
-    for old, new in col_map.items():
-        if old in df.columns and new not in df.columns:
-            df.rename(columns={old: new}, inplace=True)
+    
+    # ─── Auto-detect column names from common patterns ───────────────────────
+    home_col = None
+    away_col = None
+    home_score_col = None
+    away_score_col = None
+    score_col = None
+    status_col = None
+    league_col = None
+    date_col = None
+    time_col = None
 
-    required = ["home_team", "away_team"]
-    for col in required:
-        if col not in df.columns:
-            st.warning(f"Missing required column: {col}")
-            return
-
-    for idx, row in df.iterrows():
-        home = row.get("home_team", "TBD")
-        away = row.get("away_team", "TBD")
-        home_score = row.get("home_score", "-")
-        away_score = row.get("away_score", "-")
-        status = row.get("status", "SCHEDULED")
-        match_date = row.get("match_date", "")
-        match_time = row.get("match_time", "")
-        league = row.get("league", "")
+    for col in df.columns:
+        col_upper = str(col).upper().replace("_", "").replace(" ", "")
         
-        status_upper = str(status).upper()
-        if "LIVE" in status_upper or "IN PLAY" in status_upper:
+        # Home team
+        if not home_col and any(x in col_upper for x in ['HOME', 'HTEAM', 'TEAM1', 'T1', 'STRHOMETEAM', 'LOCAL', 'HOMETEAM']):
+            home_col = col
+        # Away team
+        elif not away_col and any(x in col_upper for x in ['AWAY', 'ATEAM', 'TEAM2', 'T2', 'STRAWAYTEAM', 'VISITOR', 'AWAYTEAM']):
+            away_col = col
+        # Combined score
+        elif not score_col and any(x in col_upper for x in ['SCORE', 'RESULT', 'VS', 'FULLTIME', 'FT']):
+            score_col = col
+        # Home score (separate)
+        elif not home_score_col and any(x in col_upper for x in ['HOMESCORE', 'INTHOMESCORE', 'HOME_GOAL', 'HSCORE']):
+            home_score_col = col
+        # Away score (separate)
+        elif not away_score_col and any(x in col_upper for x in ['AWAYSCORE', 'INTAWAYSCORE', 'AWAY_GOAL', 'ASCORE']):
+            away_score_col = col
+        # Status
+        elif not status_col and any(x in col_upper for x in ['STATUS', 'STATE', 'LIVE', 'STRSTATUS', 'MATCHSTATUS']):
+            status_col = col
+        # League
+        elif not league_col and any(x in col_upper for x in ['LEAGUE', 'COMPETITION', 'TOURNAMENT', 'STRLEAGUE', 'COMP']):
+            league_col = col
+        # Date
+        elif not date_col and any(x in col_upper for x in ['DATE', 'DATEEVENT', 'DATETIME', 'STRDATE', 'MATCHDATE']):
+            date_col = col
+        # Time
+        elif not time_col and any(x in col_upper for x in ['TIME', 'STRTIME', 'KICKOFF', 'MATCHTIME', 'STARTTIME']):
+            time_col = col
+
+    # ─── Fallback: if no team columns found, show raw data + debug ────────────
+    if not home_col or not away_col:
+        st.warning(f"⚠️ Could not identify team columns. Showing raw data.")
+        st.markdown(f"<div style='color:#888; font-size:0.75rem;'>Available columns: {list(df.columns)}</div>", unsafe_allow_html=True)
+        st.dataframe(df.head(5), use_container_width=True, hide_index=True)
+        return
+
+    # ─── Render each match card ──────────────────────────────────────────────
+    for idx, row in df.iterrows():
+        home = str(row.get(home_col, "TBD"))
+        away = str(row.get(away_col, "TBD"))
+        
+        # Build score display
+        if score_col:
+            score = str(row.get(score_col, "vs"))
+        elif home_score_col and away_score_col:
+            h = str(row.get(home_score_col, "-"))
+            a = str(row.get(away_score_col, "-"))
+            score = f"{h} - {a}" if h != "-" or a != "-" else "vs"
+        else:
+            score = "vs"
+        
+        status = str(row.get(status_col, "SCHEDULED")) if status_col else "SCHEDULED"
+        league = str(row.get(league_col, "")) if league_col else ""
+        match_date = str(row.get(date_col, "")) if date_col else ""
+        match_time = str(row.get(time_col, "")) if time_col else ""
+        
+        # Clean up NaN strings
+        if league in ["nan", "None", "null"]: league = ""
+        if match_date in ["nan", "None", "null"]: match_date = ""
+        if match_time in ["nan", "None", "null"]: match_time = ""
+        
+        # Status badge styling
+        status_upper = status.upper()
+        if any(x in status_upper for x in ["LIVE", "IN PLAY", "INPLAY", "1H", "2H", "HT", "HALF"]):
             status_color = "#00FF88"
             status_bg = "rgba(0,255,136,0.15)"
             status_text = "● LIVE"
-        elif "FINISHED" in status_upper or "FT" in status_upper:
+        elif any(x in status_upper for x in ["FINISHED", "FT", "FULL", "COMPLETED", "ENDED", "PEN", "AET"]):
             status_color = "#888888"
             status_bg = "rgba(136,136,136,0.15)"
             status_text = "FINISHED"
@@ -880,7 +915,9 @@ def render_match_table(matches_df, selected_view, key_prefix):
             font-family: 'Orbitron', sans-serif;
         ">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <span style="color:#8892b0; font-size:0.75rem;">{league} {f"• {match_date}" if match_date else ""}</span>
+                <span style="color:#8892b0; font-size:0.75rem;">
+                    {league} {f"• {match_date}" if match_date else ""}
+                </span>
                 <span style="
                     color:{status_color};
                     background:{status_bg};
@@ -896,9 +933,11 @@ def render_match_table(matches_df, selected_view, key_prefix):
                 </div>
                 <div style="padding:0 20px; text-align:center;">
                     <div style="color:#00d4ff; font-size:1.4rem; font-weight:700; letter-spacing:2px;">
-                        {home_score} - {away_score}
+                        {score}
                     </div>
-                    <div style="color:#8892b0; font-size:0.65rem; margin-top:2px;">{match_time}</div>
+                    <div style="color:#8892b0; font-size:0.65rem; margin-top:2px;">
+                        {match_time}
+                    </div>
                 </div>
                 <div style="flex:1; text-align:right;">
                     <div style="color:#e6f1ff; font-size:1rem; font-weight:600;">{away}</div>
@@ -922,7 +961,7 @@ def render_match_table(matches_df, selected_view, key_prefix):
                 f'💰 Odds: {home} 1.85 | Draw 3.40 | {away} 4.20</div>',
                 unsafe_allow_html=True
             )
-
+            
 # ══════════════════════════════════════════════════════════════════════════════
 # ARENA — MAIN SPORT DASHBOARD
 # ══════════════════════════════════════════════════════════════════════════════
