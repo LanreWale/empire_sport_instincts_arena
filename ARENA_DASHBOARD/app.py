@@ -133,6 +133,12 @@ st.html("""
         50% { box-shadow: 0 0 25px rgba(0, 255, 136, 0.8); }
     }
 
+    /* ─── DATAFRAME DARK THEME FIX ─── */
+    [data-testid="stDataFrame"] {
+        background-color: #1a1a2e !important;
+        border: 1px solid #2a2a3e !important;
+        border-radius: 8px !important;
+    }
     [data-testid="stDataFrame"] [role="columnheader"],
     [data-testid="stDataFrame"] th {
         background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%) !important;
@@ -146,7 +152,6 @@ st.html("""
         padding: 14px 12px !important;
         text-align: center !important;
     }
-
     [data-testid="stDataFrame"] [role="gridcell"],
     [data-testid="stDataFrame"] td {
         background-color: #1a1a2e !important;
@@ -158,16 +163,26 @@ st.html("""
         padding: 10px 12px !important;
         text-align: center !important;
     }
-
     [data-testid="stDataFrame"] [role="row"]:nth-child(even) [role="gridcell"] {
         background-color: #151525 !important;
     }
-
     [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] {
         background: rgba(212, 175, 55, 0.2) !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
         cursor: pointer;
+    }
+    /* Scrollbar inside dataframe */
+    [data-testid="stDataFrame"] ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    [data-testid="stDataFrame"] ::-webkit-scrollbar-track {
+        background: #0a0a0f;
+    }
+    [data-testid="stDataFrame"] ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #D4AF37 0%, #B8860B 100%);
+        border-radius: 3px;
     }
 
     .section-header {
@@ -490,11 +505,20 @@ def render_sidebar():
             st.markdown('<div style="text-align:center; color:#D4AF37; font-family:Orbitron; font-size:14px; font-weight:900; margin-bottom:10px;">EMPIRE</div>', unsafe_allow_html=True)
         st.markdown('<h2 style="text-align:center; font-size:1.2rem;">COMMAND CENTER</h2>', unsafe_allow_html=True)
 
-        st.markdown("""
+        # ─── LIVE MATCH COUNT (REAL API) ───
+        live_count = 0
+        try:
+            live_df = data.get_live_matches_df()
+            if live_df is not None and not live_df.empty:
+                live_count = len(live_df)
+        except Exception:
+            live_count = 0
+
+        st.markdown(f"""
         <div style="background: rgba(0,255,136,0.1); border: 1px solid #00ff88; border-radius: 8px; padding: 10px; margin: 10px 0;">
             <div style="color: #00ff88; font-family: 'Orbitron'; font-size: 0.8rem; text-align: center;">
                 🤖 INSTINCT BOT v2.0<br>
-                <span style="color: #888; font-size: 0.7rem;">SCANNING 847 MATCHES</span><br>
+                <span style="color: #888; font-size: 0.7rem;">SCANNING {live_count} LIVE MATCHES</span><br>
                 <span style="color: #00ff88; animation: blink 1s infinite;">● LIVE</span>
             </div>
         </div>
@@ -811,7 +835,7 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMPREHENSIVE MATCH ANALYSIS PANEL
+# COMPREHENSIVE MATCH ANALYSIS PANEL — ALL DATA FROM LIVE API
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_analysis_panel():
     """Render detailed analysis when a match is selected from the sidebar."""
@@ -832,11 +856,13 @@ def render_match_analysis_panel():
         del st.session_state.selected_match_row
         st.rerun()
 
-    # Fetch detailed data
+    # ══════════════════════════════════════════════════════════════════════════
+    # FETCH DETAILED DATA FROM API
+    # ══════════════════════════════════════════════════════════════════════════
     details = {"found": False}
     prediction = None
     try:
-        details = data.router.get_match_details(match_id)
+        details = data.router.get_match_details(match_id) or {"found": False}
         prediction = data.get_match_prediction(match_id)
     except Exception as e:
         st.warning(f"Detailed data unavailable: {str(e)[:80]}")
@@ -884,150 +910,164 @@ def render_match_analysis_panel():
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # TEAM PROFILES & FORM
+    # TEAM PROFILES & FORM — LIVE API DATA
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("##### 🏆 TEAM PROFILES & RECENT FORM")
 
     team_col1, team_col2 = st.columns(2)
 
+    # ─── HOME TEAM ───
     with team_col1:
+        home_form = details.get("home_form", []) if isinstance(details, dict) else []
+        home_stats = details.get("home_stats", {}) if isinstance(details, dict) else {}
+        
         st.markdown(f'<div style="background:rgba(0,255,136,0.05); border:1px solid rgba(0,255,136,0.2); border-radius:10px; padding:15px;">', unsafe_allow_html=True)
         st.markdown(f'<div style="color:#00FF88; font-family:Orbitron; font-size:1.1rem; margin-bottom:10px;">{home} (Home)</div>', unsafe_allow_html=True)
         
-        form = ["W", "W", "D", "L", "W"]
-        form_html = "".join([
-            f'<span style="display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; border-radius:4px; margin-right:4px; font-size:0.75rem; font-weight:700; {"background:#00FF88;color:#000;" if r=="W" else "background:#FFD700;color:#000;" if r=="D" else "background:#FF4444;color:#fff;"}">{r}</span>' 
-            for r in form
-        ])
-        st.markdown(f'<div style="margin-bottom:10px;">{form_html}</div>', unsafe_allow_html=True)
+        if home_form:
+            form_html = "".join([
+                f'<span style="display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; border-radius:4px; margin-right:4px; font-size:0.75rem; font-weight:700; {"background:#00FF88;color:#000;" if r=="W" else "background:#FFD700;color:#000;" if r=="D" else "background:#FF4444;color:#fff;"}">{r}</span>' 
+                for r in home_form[:5]
+            ])
+            st.markdown(f'<div style="margin-bottom:10px;">{form_html}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="color:#666; font-size:0.8rem; margin-bottom:10px;">Form data unavailable</div>', unsafe_allow_html=True)
         
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Home Record</span><span class="stat-value">8W-3D-2L</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Scored</span><span class="stat-value">24</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Conceded</span><span class="stat-value">11</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">6</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-row"><span class="stat-label">Home Record</span><span class="stat-value">{home_stats.get("record", "N/A")}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Scored</span><span class="stat-value">{home_stats.get("goals_for", "N/A")}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Conceded</span><span class="stat-value">{home_stats.get("goals_against", "N/A")}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">{home_stats.get("clean_sheets", "N/A")}</span></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ─── AWAY TEAM ───
     with team_col2:
+        away_form = details.get("away_form", []) if isinstance(details, dict) else []
+        away_stats = details.get("away_stats", {}) if isinstance(details, dict) else {}
+        
         st.markdown(f'<div style="background:rgba(255,68,68,0.05); border:1px solid rgba(255,68,68,0.2); border-radius:10px; padding:15px;">', unsafe_allow_html=True)
         st.markdown(f'<div style="color:#FF4444; font-family:Orbitron; font-size:1.1rem; margin-bottom:10px;">{away} (Away)</div>', unsafe_allow_html=True)
         
-        form = ["L", "W", "W", "D", "L"]
-        form_html = "".join([
-            f'<span style="display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; border-radius:4px; margin-right:4px; font-size:0.75rem; font-weight:700; {"background:#00FF88;color:#000;" if r=="W" else "background:#FFD700;color:#000;" if r=="D" else "background:#FF4444;color:#fff;"}">{r}</span>' 
-            for r in form
-        ])
-        st.markdown(f'<div style="margin-bottom:10px;">{form_html}</div>', unsafe_allow_html=True)
+        if away_form:
+            form_html = "".join([
+                f'<span style="display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; border-radius:4px; margin-right:4px; font-size:0.75rem; font-weight:700; {"background:#00FF88;color:#000;" if r=="W" else "background:#FFD700;color:#000;" if r=="D" else "background:#FF4444;color:#fff;"}">{r}</span>' 
+                for r in away_form[:5]
+            ])
+            st.markdown(f'<div style="margin-bottom:10px;">{form_html}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="color:#666; font-size:0.8rem; margin-bottom:10px;">Form data unavailable</div>', unsafe_allow_html=True)
         
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Away Record</span><span class="stat-value">5W-4D-4L</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Scored</span><span class="stat-value">18</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Conceded</span><span class="stat-value">16</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">3</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-row"><span class="stat-label">Away Record</span><span class="stat-value">{away_stats.get("record", "N/A")}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Scored</span><span class="stat-value">{away_stats.get("goals_for", "N/A")}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Conceded</span><span class="stat-value">{away_stats.get("goals_against", "N/A")}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">{away_stats.get("clean_sheets", "N/A")}</span></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # HEAD TO HEAD & PLAYER PROFILES
+    # HEAD TO HEAD & PLAYER PROFILES — LIVE API DATA
     # ══════════════════════════════════════════════════════════════════════════
     h2h_col, player_col = st.columns(2)
 
     with h2h_col:
-        st.markdown("##### ⚔️ HEAD TO HEAD (Last 5)")
-        h2h_data = [
-            {"date": "2024-11-15", "score": f"{home} 2-1 {away}", "comp": "Premier League"},
-            {"date": "2024-05-22", "score": f"{away} 0-0 {home}", "comp": "Premier League"},
-            {"date": "2023-12-10", "score": f"{home} 3-2 {away}", "comp": "FA Cup"},
-        ]
-        for h in h2h_data:
-            st.markdown(f'<div class="stat-row"><span class="stat-label">{h["date"]}</span><span class="stat-value">{h["score"]}</span></div>', unsafe_allow_html=True)
-            st.markdown(f'<div style="color:#666; font-size:0.7rem; margin-bottom:6px;">{h["comp"]}</div>', unsafe_allow_html=True)
+        st.markdown("##### ⚔️ HEAD TO HEAD")
+        h2h_data = details.get("h2h", []) if isinstance(details, dict) else []
+        
+        if h2h_data:
+            for h in h2h_data[:5]:
+                date_val = h.get("date", "N/A")
+                score_val = h.get("score", "N/A")
+                comp_val = h.get("competition", "N/A")
+                st.markdown(f'<div class="stat-row"><span class="stat-label">{date_val}</span><span class="stat-value">{score_val}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="color:#666; font-size:0.7rem; margin-bottom:6px;">{comp_val}</div>', unsafe_allow_html=True)
+        else:
+            st.info("No head-to-head data available from API.")
 
     with player_col:
         st.markdown("##### 👤 KEY PLAYERS")
-        players = [
-            {"name": "Player A", "team": home, "goals": 12, "assists": 8, "rating": 8.4},
-            {"name": "Player B", "team": away, "goals": 9, "assists": 5, "rating": 7.8},
-            {"name": "Player C", "team": home, "goals": 6, "assists": 11, "rating": 7.5},
-        ]
-        for p in players:
-            team_color = "#00FF88" if p["team"] == home else "#FF4444"
-            st.markdown(f'''
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #2a2a3e;">
-                    <div>
-                        <div style="color:#e6f1ff; font-weight:600;">{p["name"]}</div>
-                        <div style="color:{team_color}; font-size:0.75rem;">{p["team"]}</div>
+        players = details.get("players", []) if isinstance(details, dict) else []
+        
+        if players:
+            for p in players[:5]:
+                team_color = "#00FF88" if p.get("team") == home else "#FF4444"
+                st.markdown(f'''
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #2a2a3e;">
+                        <div>
+                            <div style="color:#e6f1ff; font-weight:600;">{p.get("name", "Unknown")}</div>
+                            <div style="color:{team_color}; font-size:0.75rem;">{p.get("team", "N/A")}</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="color:#FFD700; font-family:Orbitron; font-size:0.9rem;">⭐ {p.get("rating", "-")}</div>
+                            <div style="color:#888; font-size:0.7rem;">⚽ {p.get("goals", 0)} | 🅰️ {p.get("assists", 0)}</div>
+                        </div>
                     </div>
-                    <div style="text-align:right;">
-                        <div style="color:#FFD700; font-family:Orbitron; font-size:0.9rem;">⭐ {p["rating"]}</div>
-                        <div style="color:#888; font-size:0.7rem;">⚽ {p["goals"]} | 🅰️ {p["assists"]}</div>
-                    </div>
-                </div>
-            ''', unsafe_allow_html=True)
+                ''', unsafe_allow_html=True)
+        else:
+            st.info("No player data available from API.")
 
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # ALL ODDS CATEGORIES
+    # ALL ODDS CATEGORIES — LIVE API DATA
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("##### 💰 COMPLETE ODDS MARKET")
+    odds_data = details.get("odds", {}) if isinstance(details, dict) else {}
 
     odds_tabs = st.tabs(["1X2", "Over/Under", "BTTS", "Cards", "Corners", "Asian Handicap"])
 
     with odds_tabs[0]:
+        ox = odds_data.get("1x2", {})
         c1, c2, c3 = st.columns(3)
-        c1.metric("Home Win", "1.85", "+0.15")
-        c2.metric("Draw", "3.40", "-0.20")
-        c3.metric("Away Win", "4.20", "+0.35")
+        c1.metric("Home Win", ox.get("home", match_row.get('HOME', "-")), ox.get("home_delta", ""))
+        c2.metric("Draw", ox.get("draw", match_row.get('DRAW', "-")), ox.get("draw_delta", ""))
+        c3.metric("Away Win", ox.get("away", match_row.get('AWAY', "-")), ox.get("away_delta", ""))
 
     with odds_tabs[1]:
+        ou = odds_data.get("over_under", {})
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Over 0.5", "1.08", "Low")
-        c2.metric("Over 1.5", "1.35", "Med")
-        c3.metric("Over 2.5", "1.95", "High")
-        c4.metric("Over 3.5", "3.10", "High")
+        c1.metric("Over 0.5", ou.get("o0_5", "-"), ou.get("o0_5_delta", ""))
+        c2.metric("Over 1.5", ou.get("o1_5", "-"), ou.get("o1_5_delta", ""))
+        c3.metric("Over 2.5", ou.get("o2_5", "-"), ou.get("o2_5_delta", ""))
+        c4.metric("Over 3.5", ou.get("o3_5", "-"), ou.get("o3_5_delta", ""))
 
     with odds_tabs[2]:
+        btts = odds_data.get("btts", {})
         c1, c2 = st.columns(2)
-        c1.metric("BTTS Yes", "1.75", "55% prob")
-        c2.metric("BTTS No", "2.05", "45% prob")
+        c1.metric("BTTS Yes", btts.get("yes", "-"), btts.get("yes_prob", ""))
+        c2.metric("BTTS No", btts.get("no", "-"), btts.get("no_prob", ""))
 
     with odds_tabs[3]:
+        cards = odds_data.get("cards", {})
         c1, c2, c3 = st.columns(3)
-        c1.metric("Over 2.5 Cards", "1.90", "High")
-        c2.metric("Over 4.5 Cards", "3.20", "Med")
-        c3.metric("Home More Cards", "2.10", "50%")
+        c1.metric("Over 2.5 Cards", cards.get("o2_5", "-"), cards.get("o2_5_label", ""))
+        c2.metric("Over 4.5 Cards", cards.get("o4_5", "-"), cards.get("o4_5_label", ""))
+        c3.metric("Home More Cards", cards.get("home_more", "-"), cards.get("home_more_label", ""))
 
     with odds_tabs[4]:
+        corners = odds_data.get("corners", {})
         c1, c2, c3 = st.columns(3)
-        c1.metric("Over 8.5", "1.85", "High")
-        c2.metric("Over 10.5", "2.40", "Med")
-        c3.metric("Over 12.5", "3.50", "Low")
+        c1.metric("Over 8.5", corners.get("o8_5", "-"), corners.get("o8_5_label", ""))
+        c2.metric("Over 10.5", corners.get("o10_5", "-"), corners.get("o10_5_label", ""))
+        c3.metric("Over 12.5", corners.get("o12_5", "-"), corners.get("o12_5_label", ""))
 
     with odds_tabs[5]:
+        ah = odds_data.get("asian_handicap", {})
         c1, c2, c3 = st.columns(3)
-        c1.metric("Home -1.5", "2.60", "Risky")
-        c2.metric("Home -0.5", "1.95", "Fair")
-        c3.metric("Away +1.5", "1.45", "Safe")
+        c1.metric("Home -1.5", ah.get("home_m1_5", "-"), ah.get("home_m1_5_label", ""))
+        c2.metric("Home -0.5", ah.get("home_m0_5", "-"), ah.get("home_m0_5_label", ""))
+        c3.metric("Away +1.5", ah.get("away_p1_5", "-"), ah.get("away_p1_5_label", ""))
 
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # AI REASONING
+    # AI REASONING — LIVE API DATA ONLY
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("##### 🧠 AI ANALYSIS REASONING")
-    if prediction and prediction.reasoning:
+    if prediction and hasattr(prediction, 'reasoning') and prediction.reasoning:
         for reason in prediction.reasoning:
             st.markdown(f'<div style="padding:8px; margin:4px 0; background:rgba(212,175,55,0.05); border-left:3px solid #D4AF37; border-radius:0 6px 6px 0; color:#e6f1ff;">• {reason}</div>', unsafe_allow_html=True)
     else:
-        reasons = [
-            f"{home} has strong home form (8W-3D-2L) with 24 goals scored",
-            f"{away} struggles away (5W-4D-4L) conceding 16 goals",
-            "H2H favors home team: 2 wins in last 3 meetings",
-            "Home team clean sheet rate: 46% (6/13 matches)",
-            "Expected goals model: Home 1.85 xG vs Away 1.12 xG"
-        ]
-        for r in reasons:
-            st.markdown(f'<div style="padding:8px; margin:4px 0; background:rgba(212,175,55,0.05); border-left:3px solid #D4AF37; border-radius:0 6px 6px 0; color:#e6f1ff;">• {r}</div>', unsafe_allow_html=True)
+        st.info("AI reasoning pending. Ensure prediction models are connected to the API.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
