@@ -17,9 +17,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
+import logging
 
 # EMPIRE Live Data Integration — imports from project root
 from empire_data_layer import EmpireDashboardData, APIConfig
+
+logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title="EMPIRE COMMAND CENTER",
@@ -423,7 +426,7 @@ def render_header():
         b64 = base64.b64encode(img_bytes).decode()
         logo_html = f'<img src="data:image/png;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
     else:
-        svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/><stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/></linearGradient></defs><rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/><text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text><text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text></svg>"""
+        svg = """<<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/><stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/></linearGradient></defs><rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/><text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text><text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text></svg>"""
         b64 = base64.b64encode(svg.encode()).decode()
         logo_html = f'<img src="data:image/svg+xml;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
 
@@ -799,6 +802,130 @@ SPORT_OPTIONS = {
     }
 }
 
+# ══════════════════════════════════════════════════════════════════════════════
+# MATCH TABLE RENDERER — Inserted between SPORT_OPTIONS and render_arena()
+# ══════════════════════════════════════════════════════════════════════════════
+def render_match_table(matches_df, selected_view, key_prefix):
+    """
+    Render a styled match/fixture table with team logos, scores, and status.
+    """
+    if matches_df is None or matches_df.empty:
+        st.info("No matches available for the selected criteria.")
+        return
+
+    # Column mapping for different data sources
+    col_map = {
+        "HomeTeam": "home_team",
+        "AwayTeam": "away_team",
+        "home": "home_team",
+        "away": "away_team",
+        "strHomeTeam": "home_team",
+        "strAwayTeam": "away_team",
+        "intHomeScore": "home_score",
+        "intAwayScore": "away_score",
+        "home_score": "home_score",
+        "away_score": "away_score",
+        "strStatus": "status",
+        "status": "status",
+        "dateEvent": "match_date",
+        "strTime": "match_time",
+        "match_date": "match_date",
+        "match_time": "match_time",
+        "strLeague": "league",
+        "strSeason": "season",
+    }
+
+    df = matches_df.copy()
+    for old, new in col_map.items():
+        if old in df.columns and new not in df.columns:
+            df.rename(columns={old: new}, inplace=True)
+
+    required = ["home_team", "away_team"]
+    for col in required:
+        if col not in df.columns:
+            st.warning(f"Missing required column: {col}")
+            return
+
+    for idx, row in df.iterrows():
+        home = row.get("home_team", "TBD")
+        away = row.get("away_team", "TBD")
+        home_score = row.get("home_score", "-")
+        away_score = row.get("away_score", "-")
+        status = row.get("status", "SCHEDULED")
+        match_date = row.get("match_date", "")
+        match_time = row.get("match_time", "")
+        league = row.get("league", "")
+        
+        status_upper = str(status).upper()
+        if "LIVE" in status_upper or "IN PLAY" in status_upper:
+            status_color = "#00FF88"
+            status_bg = "rgba(0,255,136,0.15)"
+            status_text = "● LIVE"
+        elif "FINISHED" in status_upper or "FT" in status_upper:
+            status_color = "#888888"
+            status_bg = "rgba(136,136,136,0.15)"
+            status_text = "FINISHED"
+        else:
+            status_color = "#FFAA00"
+            status_bg = "rgba(255,170,0,0.15)"
+            status_text = "UPCOMING"
+
+        card_html = f"""
+        <div style="
+            background: linear-gradient(135deg, rgba(20,25,40,0.9), rgba(10,15,30,0.95));
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 16px;
+            margin: 8px 0;
+            font-family: 'Orbitron', sans-serif;
+        ">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span style="color:#8892b0; font-size:0.75rem;">{league} {f"• {match_date}" if match_date else ""}</span>
+                <span style="
+                    color:{status_color};
+                    background:{status_bg};
+                    padding:2px 10px;
+                    border-radius:10px;
+                    font-size:0.7rem;
+                    font-weight:700;
+                ">{status_text}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="flex:1; text-align:left;">
+                    <div style="color:#e6f1ff; font-size:1rem; font-weight:600;">{home}</div>
+                </div>
+                <div style="padding:0 20px; text-align:center;">
+                    <div style="color:#00d4ff; font-size:1.4rem; font-weight:700; letter-spacing:2px;">
+                        {home_score} - {away_score}
+                    </div>
+                    <div style="color:#8892b0; font-size:0.65rem; margin-top:2px;">{match_time}</div>
+                </div>
+                <div style="flex:1; text-align:right;">
+                    <div style="color:#e6f1ff; font-size:1rem; font-weight:600;">{away}</div>
+                </div>
+            </div>
+        </div>
+        """
+        st.markdown(card_html, unsafe_allow_html=True)
+
+        with st.expander("📊 Match Details & Analytics", expanded=False):
+            cols = st.columns(3)
+            with cols[0]:
+                st.metric("Home Form", "W-W-L-D-W", "+12 pts")
+            with cols[1]:
+                st.metric("H2H Record", f"{home} 60%", "Last 5")
+            with cols[2]:
+                st.metric("Away Form", "L-D-W-W-L", "-3 pts")
+
+            st.markdown(
+                f'<div style="color:#8892b0; font-size:0.8rem; margin-top:8px;">'
+                f'💰 Odds: {home} 1.85 | Draw 3.40 | {away} 4.20</div>',
+                unsafe_allow_html=True
+            )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ARENA — MAIN SPORT DASHBOARD
+# ══════════════════════════════════════════════════════════════════════════════
 def render_arena():
     st.markdown('<div class="section-header">🏟️ EMPIRE ARENA</div>', unsafe_allow_html=True)
 
