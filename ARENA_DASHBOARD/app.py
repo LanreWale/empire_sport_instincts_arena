@@ -821,15 +821,34 @@ def render_match_analysis_panel():
 
     match_id = st.session_state.selected_match_id
     match_row = st.session_state.get('selected_match_row', {})
-    home = st.session_state.get('selected_match_home', 'Home')
-    away = st.session_state.get('selected_match_away', 'Away')
+    
+    # ─── FIXED: Robust team name extraction with multiple fallback keys ─────
+    home = st.session_state.get('selected_match_home', '')
+    if not home or home in ['TBD', 'nan', 'None', 'null']:
+        home = (match_row.get('home_team') or 
+                match_row.get('strHomeTeam') or 
+                match_row.get('HomeTeam') or 
+                match_row.get('HOME') or 
+                match_row.get('home') or 
+                match_row.get('strEventHomeTeam') or
+                'Home')
+    
+    away = st.session_state.get('selected_match_away', '')
+    if not away or away in ['TBD', 'nan', 'None', 'null']:
+        away = (match_row.get('away_team') or 
+                match_row.get('strAwayTeam') or 
+                match_row.get('AwayTeam') or 
+                match_row.get('AWAY') or 
+                match_row.get('away') or 
+                match_row.get('strEventAwayTeam') or
+                'Away')
 
     st.markdown(f'<div class="section-header">🔍 MATCH ANALYSIS — {home} vs {away}</div>', unsafe_allow_html=True)
 
     # Back button
     if st.button("← Back to Match List", use_container_width=False):
-        del st.session_state.selected_match_id
-        del st.session_state.selected_match_row
+        for key in ['selected_match_id', 'selected_match_row', 'selected_match_home', 'selected_match_away']:
+            st.session_state.pop(key, None)
         st.rerun()
 
     # Fetch detailed data
@@ -850,19 +869,19 @@ def render_match_analysis_panel():
         st.markdown("##### 📋 MATCH INFORMATION")
         info_items = {
             "Match ID": match_id,
-            "League": match_row.get('LEAGUE', match_row.get('league', 'N/A')),
-            "Status": match_row.get('STATUS', match_row.get('status', 'N/A')),
-            "Date": match_row.get('DATE', match_row.get('dateEvent', match_row.get('match_date', '-'))),
-            "Time": match_row.get('TIME', match_row.get('strTime', match_row.get('match_time', '-'))),
+            "League": match_row.get('LEAGUE', match_row.get('league', match_row.get('strLeague', 'N/A'))),
+            "Status": match_row.get('STATUS', match_row.get('status', match_row.get('strStatus', 'N/A'))),
+            "Date": match_row.get('DATE', match_row.get('dateEvent', match_row.get('match_date', match_row.get('strDate', '-')))),
+            "Time": match_row.get('TIME', match_row.get('strTime', match_row.get('match_time', match_row.get('strTimeLocal', '-')))),
         }
         for label, value in info_items.items():
             st.markdown(f'<div class="stat-row"><span class="stat-label">{label}</span><span class="stat-value">{value}</span></div>', unsafe_allow_html=True)
 
     with col2:
         st.markdown("##### ⚖️ CURRENT ODDS")
-        home_odds = match_row.get('HOME', match_row.get('home_odds', '-'))
-        draw_odds = match_row.get('DRAW', match_row.get('draw_odds', '-'))
-        away_odds = match_row.get('AWAY', match_row.get('away_odds', '-'))
+        home_odds = match_row.get('HOME', match_row.get('home_odds', match_row.get('odds_home', '-')))
+        draw_odds = match_row.get('DRAW', match_row.get('draw_odds', match_row.get('odds_draw', '-')))
+        away_odds = match_row.get('AWAY', match_row.get('away_odds', match_row.get('odds_away', '-')))
         
         odds_html = '<div class="odds-row">'
         odds_html += f'<div class="odds-box"><div class="odds-label">1 (Home)</div><div class="odds-value">{home_odds}</div></div>'
