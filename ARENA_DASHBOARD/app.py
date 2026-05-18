@@ -715,6 +715,90 @@ def render_match_detail(match_id: str, match_row: pd.Series):
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ─── SPORT CONFIGURATION ──────────────────────────────────────────────────────
+SPORT_OPTIONS = {
+    "Soccer": {
+        "league_id": "4328",
+        "league_name": "English Premier League",
+        "country": "England",
+        "sport_type": "Soccer",
+        "icon": "⚽",
+        "season": "2024-2025"
+    },
+    "NBA": {
+        "league_id": "4387",
+        "league_name": "NBA",
+        "country": "USA",
+        "sport_type": "Basketball",
+        "icon": "🏀",
+        "season": "2024-2025"
+    },
+    "NFL": {
+        "league_id": "4391",
+        "league_name": "NFL",
+        "country": "USA",
+        "sport_type": "American Football",
+        "icon": "🏈",
+        "season": "2024"
+    },
+    "MLB": {
+        "league_id": "4424",
+        "league_name": "MLB",
+        "country": "USA",
+        "sport_type": "Baseball",
+        "icon": "⚾",
+        "season": "2024"
+    },
+    "NHL": {
+        "league_id": "4380",
+        "league_name": "NHL",
+        "country": "USA",
+        "sport_type": "Ice Hockey",
+        "icon": "🏒",
+        "season": "2024"
+    },
+    "UFC": {
+        "league_id": "4445",
+        "league_name": "UFC",
+        "country": "World",
+        "sport_type": "MMA",
+        "icon": "🥊",
+        "season": "2024"
+    },
+    "Formula 1": {
+        "league_id": "4370",
+        "league_name": "Formula 1",
+        "country": "World",
+        "sport_type": "Motorsport",
+        "icon": "🏎️",
+        "season": "2024"
+    },
+    "Tennis": {
+        "league_id": "4467",
+        "league_name": "ATP Tour",
+        "country": "World",
+        "sport_type": "Tennis",
+        "icon": "🎾",
+        "season": "2024"
+    },
+    "Cricket": {
+        "league_id": "4473",
+        "league_name": "IPL",
+        "country": "India",
+        "sport_type": "Cricket",
+        "icon": "🏏",
+        "season": "2024"
+    },
+    "Golf": {
+        "league_id": "4426",
+        "league_name": "PGA Tour",
+        "country": "USA",
+        "sport_type": "Golf",
+        "icon": "⛳",
+        "season": "2024"
+    }
+}
+
 def render_arena():
     st.markdown('<div class="section-header">🏟️ EMPIRE ARENA</div>', unsafe_allow_html=True)
 
