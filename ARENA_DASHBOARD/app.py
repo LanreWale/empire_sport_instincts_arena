@@ -133,12 +133,6 @@ st.html("""
         50% { box-shadow: 0 0 25px rgba(0, 255, 136, 0.8); }
     }
 
-    /* ─── DATAFRAME DARK THEME FIX ─── */
-    [data-testid="stDataFrame"] {
-        background-color: #1a1a2e !important;
-        border: 1px solid #2a2a3e !important;
-        border-radius: 8px !important;
-    }
     [data-testid="stDataFrame"] [role="columnheader"],
     [data-testid="stDataFrame"] th {
         background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%) !important;
@@ -152,6 +146,7 @@ st.html("""
         padding: 14px 12px !important;
         text-align: center !important;
     }
+
     [data-testid="stDataFrame"] [role="gridcell"],
     [data-testid="stDataFrame"] td {
         background-color: #1a1a2e !important;
@@ -163,26 +158,16 @@ st.html("""
         padding: 10px 12px !important;
         text-align: center !important;
     }
+
     [data-testid="stDataFrame"] [role="row"]:nth-child(even) [role="gridcell"] {
         background-color: #151525 !important;
     }
+
     [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] {
         background: rgba(212, 175, 55, 0.2) !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
         cursor: pointer;
-    }
-    /* Scrollbar inside dataframe */
-    [data-testid="stDataFrame"] ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-    [data-testid="stDataFrame"] ::-webkit-scrollbar-track {
-        background: #0a0a0f;
-    }
-    [data-testid="stDataFrame"] ::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #D4AF37 0%, #B8860B 100%);
-        border-radius: 3px;
     }
 
     .section-header {
@@ -567,21 +552,49 @@ def render_sidebar():
         try:
             log_df = data.router.get_connection_log_df()
             if not log_df.empty:
-                def color_status(val):
-                    if val == "SUCCESS":
-                        return "color: #00ff88; font-weight: 700;"
-                    elif val in ["FAIL", "ERROR", "TIMEOUT"]:
-                        return "color: #ff4444; font-weight: 700;"
-                    elif val == "EMPTY":
-                        return "color: #FFD700; font-weight: 700;"
-                    return "color: #888;"
-
-                styled_log = log_df.style.map(color_status, subset=["STATUS"])
-                st.dataframe(styled_log, use_container_width=True, hide_index=True, height=250)
+                render_api_log_table(log_df)
             else:
                 st.info("No connection attempts yet.")
         except Exception as e:
             st.warning(f"Log unavailable: {str(e)[:50]}")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CUSTOM DARK API LOG TABLE (guaranteed background color)
+# ══════════════════════════════════════════════════════════════════════════════
+def render_api_log_table(log_df):
+    """Render connection log as custom HTML to bypass Streamlit dataframe theming."""
+    html = '<div style="background:#1a1a2e; border:1px solid #2a2a3e; border-radius:8px; overflow:hidden;">'
+    html += '<table style="width:100%; border-collapse:collapse; font-family: Rajdhani, sans-serif; font-size:0.82rem;">'
+    
+    # Header row
+    html += '<tr style="background:linear-gradient(135deg, #D4AF37 0%, #B8860B 100%); color:#000; font-family:Orbitron; font-weight:900; font-size:0.78rem; text-transform:uppercase; letter-spacing:1px;">'
+    for col in log_df.columns:
+        html += f'<th style="padding:10px 8px; text-align:center; border-bottom:3px solid #FFD700;">{col}</th>'
+    html += '</tr>'
+    
+    # Data rows
+    for _, row in log_df.iterrows():
+        status = str(row.get("STATUS", ""))
+        if status == "SUCCESS":
+            status_color = "#00ff88"
+        elif status in ["FAIL", "ERROR", "TIMEOUT"]:
+            status_color = "#ff4444"
+        elif status == "EMPTY":
+            status_color = "#FFD700"
+        else:
+            status_color = "#888"
+        
+        html += '<tr style="border-bottom:1px solid #2a2a3e;">'
+        for col in log_df.columns:
+            val = row.get(col, "")
+            if col == "STATUS":
+                html += f'<td style="padding:8px; color:{status_color}; text-align:center; font-weight:700;">{val}</td>'
+            else:
+                html += f'<td style="padding:8px; color:#FFD700; text-align:center; font-weight:500;">{val}</td>'
+        html += '</tr>'
+    
+    html += '</table></div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LIVE MATCH TICKER
@@ -690,6 +703,49 @@ SPORT_OPTIONS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ROBUST DATAFRAME LEAGUE FILTER (auto-detects columns)
+# ══════════════════════════════════════════════════════════════════════════════
+def filter_dataframe_by_league(df, selected_league_id, league_options):
+    """
+    Client-side league filter that auto-detects league_id or league_name columns.
+    Returns the filtered dataframe. If selected_league_id is ALL, returns untouched.
+    """
+    if selected_league_id == "ALL" or df is None or df.empty:
+        return df
+    
+    # ─── Strategy 1: Filter by league_id column ─────────────────────────────
+    for col in df.columns:
+        cu = str(col).upper().replace("_", "").replace(" ", "")
+        if any(x in cu for x in ['LEAGUEID', 'IDLEAGUE', 'LEAGUE_ID', 'ID_LEAGUE']):
+            try:
+                mask = df[col].astype(str) == str(selected_league_id)
+                if mask.any():
+                    return df[mask]
+            except Exception:
+                continue
+    
+    # ─── Strategy 2: Filter by league name column ─────────────────────────────
+    league_name = None
+    for lid, label in league_options:
+        if str(lid) == str(selected_league_id):
+            league_name = label.replace("🏆 ", "").split(" (")[0]
+            break
+    
+    if league_name:
+        for col in df.columns:
+            cu = str(col).upper().replace("_", "").replace(" ", "")
+            if any(x in cu for x in ['LEAGUE', 'COMPETITION', 'TOURNAMENT', 'STRLEAGUE', 'COMP']):
+                try:
+                    mask = df[col].astype(str).str.contains(league_name, case=False, na=False)
+                    if mask.any():
+                        return df[mask]
+                except Exception:
+                    continue
+    
+    # If nothing matched, return unfiltered so user sees data instead of blank
+    return df
+
+# ══════════════════════════════════════════════════════════════════════════════
 # MATCH TABLE RENDERER — Clickable cards with league-aware filtering
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_table(matches_df, selected_view, key_prefix, selected_league_id, selected_status):
@@ -738,11 +794,13 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
         st.dataframe(df.head(3), use_container_width=True, hide_index=True)
         return
 
-    # ─── Client-side league filter (if server didn't filter) ──────────────────
+    # ─── Client-side league filter (defensive second pass) ────────────────────
     if selected_league_id != "ALL" and league_id_col:
         df = df[df[league_id_col].astype(str) == str(selected_league_id)]
     elif selected_league_id != "ALL" and league_col:
-        pass  # API should handle server-side; skip if no league column
+        # If we have no league_id column but have a name column, we can't filter
+        # precisely here because we don't have league_options in scope.
+        pass
 
     # ─── Client-side status filter ───────────────────────────────────────────
     if selected_status != "ALL" and status_col:
@@ -752,7 +810,7 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
         df = df[status_mask]
 
     if df.empty:
-        st.info(f"🔍 No {selected_status.lower()} matches found. Try another filter.")
+        st.info(f"🔍 No {selected_status.lower()} matches found for this league. Try another filter.")
         return
 
     st.markdown(f"<div style='color:#888; font-size:0.85rem; margin-bottom:10px;'>📊 Showing {len(df)} matches</div>", unsafe_allow_html=True)
@@ -1095,31 +1153,48 @@ def render_arena():
             index=sport_names.index(st.session_state.selected_sport),
             key="sidebar_sport_select"
         )
+        
+        # If sport changed, clear cached league options for this sport to force fresh fetch
+        new_key_prefix = selected_sport.replace(" ", "_").replace("⚽", "f").replace("🏀", "b").replace("🏈", "nfl").replace("🎾", "t").replace("🏒", "nhl")
+        old_key_prefix = st.session_state.selected_sport.replace(" ", "_").replace("⚽", "f").replace("🏀", "b").replace("🏈", "nfl").replace("🎾", "t").replace("🏒", "nhl") if 'selected_sport' in st.session_state else None
+        
+        if old_key_prefix and old_key_prefix != new_key_prefix:
+            st.session_state.pop(f'league_options_{new_key_prefix}', None)
+        
         st.session_state.selected_sport = selected_sport
 
         sport_key = SPORT_OPTIONS[selected_sport]
-        key_prefix = selected_sport.replace(" ", "_").replace("⚽", "f").replace("🏀", "b").replace("🏈", "nfl").replace("🎾", "t").replace("🏒", "nhl")
+        key_prefix = new_key_prefix
 
         st.markdown("<hr style='border-color:#333; margin:10px 0;'>", unsafe_allow_html=True)
 
-        # League dropdown
+        # League dropdown — ROBUST FETCH WITH FALLBACK
         if f'league_options_{key_prefix}' not in st.session_state:
             st.session_state[f'league_options_{key_prefix}'] = [("ALL", "🏆 All Leagues")]
 
-        try:
-            api_leagues = data.get_all_leagues(sport_key)
-            if api_leagues:
-                league_options = [("ALL", "🏆 All Leagues")]
-                for league in api_leagues:
-                    display = f"{league['name']}"
-                    if league.get('country'):
-                        display += f" ({league['country']})"
-                    league_options.append((league['id'], display))
-                st.session_state[f'league_options_{key_prefix}'] = league_options
-            else:
-                league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
-        except Exception:
-            league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
+        league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
+        
+        # Only hit the API if we still only have the default entry
+        if len(league_options) <= 1:
+            try:
+                # Try 1: pass the sport config dict (legacy behavior)
+                api_leagues = data.get_all_leagues(sport_key)
+                # Try 2: if we got 0 or 1 leagues, the API may expect a string like "Soccer"
+                if not api_leagues or len(api_leagues) <= 1:
+                    api_leagues = data.get_all_leagues(sport_key.get("sport_type", selected_sport))
+                
+                if api_leagues and len(api_leagues) > 1:
+                    fresh_options = [("ALL", "🏆 All Leagues")]
+                    for league in api_leagues:
+                        display = f"{league.get('name', 'Unknown')}"
+                        if league.get('country'):
+                            display += f" ({league['country']})"
+                        fresh_options.append((league.get('id', '0'), display))
+                    league_options = fresh_options
+                    st.session_state[f'league_options_{key_prefix}'] = league_options
+            except Exception as e:
+                # Silently fall back to cached/default
+                pass
 
         league_labels = [opt[1] for opt in league_options]
         league_ids = [opt[0] for opt in league_options]
@@ -1159,34 +1234,28 @@ def render_arena():
     # ─── MAIN AREA: Header + Match Cards ─────────────────────────────────────
     st.markdown(f'<div class="section-header">🏟️ EMPIRE ARENA — {selected_sport.upper()}</div>', unsafe_allow_html=True)
 
-    # Fetch matches based on filters
+    # Fetch matches based on filters — NO HARDCODED COLUMN NAMES
     try:
         if selected_status == "LIVE":
-            matches_df = data.get_live_matches_df(sport_key, selected_league_id)
+            raw_df = data.get_live_matches_df(sport_key, selected_league_id)
+            matches_df = filter_dataframe_by_league(raw_df, selected_league_id, league_options)
         elif selected_status == "SCHEDULED":
-            matches_df = data.get_upcoming_matches_df(sport_key)
-            if selected_league_id != "ALL" and not matches_df.empty and "LEAGUE" in matches_df.columns:
-                league_name = None
-                for lid, label in league_options:
-                    if lid == selected_league_id:
-                        league_name = label.replace("🏆 ", "").split(" (")[0]
-                        break
-                if league_name:
-                    matches_df = matches_df[matches_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
+            raw_df = data.get_upcoming_matches_df(sport_key)
+            matches_df = filter_dataframe_by_league(raw_df, selected_league_id, league_options)
         elif selected_status == "FINISHED":
-            matches_df = data.router.get_matches_by_status("FINISHED", sport_key, selected_league_id)
+            raw_df = data.router.get_matches_by_status("FINISHED", sport_key, selected_league_id)
+            matches_df = filter_dataframe_by_league(raw_df, selected_league_id, league_options)
         else:  # ALL
-            live_df = data.get_live_matches_df(sport_key, selected_league_id)
-            sched_df = data.get_upcoming_matches_df(sport_key)
-            if selected_league_id != "ALL" and not sched_df.empty and "LEAGUE" in sched_df.columns:
-                league_name = None
-                for lid, label in league_options:
-                    if lid == selected_league_id:
-                        league_name = label.replace("🏆 ", "").split(" (")[0]
-                        break
-                if league_name:
-                    sched_df = sched_df[sched_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
-            matches_df = pd.concat([live_df, sched_df], ignore_index=True) if not live_df.empty else sched_df
+            live_raw = data.get_live_matches_df(sport_key, selected_league_id)
+            sched_raw = data.get_upcoming_matches_df(sport_key)
+            live_df = filter_dataframe_by_league(live_raw, selected_league_id, league_options)
+            sched_df = filter_dataframe_by_league(sched_raw, selected_league_id, league_options)
+            if not live_df.empty and not sched_df.empty:
+                matches_df = pd.concat([live_df, sched_df], ignore_index=True)
+            elif not live_df.empty:
+                matches_df = live_df
+            else:
+                matches_df = sched_df
     except Exception as e:
         st.error(f"Error fetching matches: {str(e)[:100]}")
         matches_df = pd.DataFrame()
