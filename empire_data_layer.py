@@ -28,18 +28,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# LIVE DATA INITIALIZATION
-# ════════════════════════════════════════════════════════════════════════════════
-data = EmpireDashboardData()
-
-REFRESH_INTERVAL = 15  # seconds
-
-if 'last_refresh' not in st.session_state:
-    st.session_state.last_refresh = time.time()
-
-elapsed = time.time() - st.session_state.last_refresh
-
 # ══════════════════════════════════════════════════════════════════════════════
 # PREMIUM DARK GOLD COMMAND CENTER CSS
 # ══════════════════════════════════════════════════════════════════════════════
