@@ -562,7 +562,7 @@ def render_sidebar():
 
                 styled_log = log_df.style.map(color_status, subset=["STATUS"])
                 # Add background container for the log
-                st.markdown('<div class="connection-log-container">', unsafe_allow_html=True)
+                                st.markdown('<div style="background-color: #0d0d14; border-radius: 10px; padding: 10px; border: 1px solid #2a2a3e;">', unsafe_allow_html=True)
                 st.dataframe(styled_log, use_container_width=True, hide_index=True, height=250)
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
