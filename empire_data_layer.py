@@ -1094,60 +1094,106 @@ class MySportsFeedsProvider(DataProvider):
             self.headers = {}
         self.rate_limit_delay = 2.0
 
-    def get_all_leagues(self, sport: str = "football") -> List[League]:
-        return []
-
     def get_live_matches(self, sport: str = "nba", league_id: str = None) -> List[Match]:
+        """Fetch live NBA/NFL/MLB/NHL games using the correct endpoint"""
         if not APIConfig.MYSPORTSFEEDS_KEY:
             return []
-        cache_key = self._get_cache_key("games", {"sport": sport})
-        cached = self._get_cached(cache_key)
+        
+        # Map sport names to MySportsFeeds league codes
+        sport_map = {
+            "NBA": "nba",
+            "NFL": "nfl",
+            "MLB": "mlb",
+            "NHL": "nhl"
+        }
+        league = sport_map.get(sport.upper(), "nba")
+        
+        # Get current season (e.g., 2023-2024 for NBA)
+        current_year = datetime.now().year
+        if sport.upper() == "NBA":
+            # NBA season crosses calendar year, e.g., 2023-2024
+            season = f"{current_year-1}-{current_year}"
+        else:
+            season = str(current_year)
+        
+        # Use the date parameter for today's games
+        today = datetime.now().strftime("%Y%m%d")
+        endpoint = f"{self.base_url}/{league}/{season}/games.json"
+        params = {"date": today, "teamstats": "none", "playerstats": "none"}
+        
+        cache_key = self._get_cache_key(f"{league}_games", params)
+        cached = self._get_cached(cache_key, ttl=60)  # 1 minute cache for live
         if cached:
             return self._parse_games(cached)
-        data = self._make_request(f"{self.base_url}/{sport}/current/games.json", self.headers, {"date": datetime.now().strftime("%Y%m%d")})
+        
+        data = self._make_request(endpoint, self.headers, params)
         if not data:
-            return []
-        self._set_cached(cache_key, data)
-        return self._parse_games(data)
-
-    def get_upcoming_matches(self, sport: str = "nba", days: int = 7) -> List[Match]:
-        if not APIConfig.MYSPORTSFEEDS_KEY:
-            return []
-        cache_key = self._get_cache_key("games/upcoming", {"sport": sport, "days": days})
-        cached = self._get_cached(cache_key, ttl=300)
-        if cached:
-            return self._parse_games(cached)
-        data = self._make_request(f"{self.base_url}/{sport}/current/games.json", self.headers, {"date": datetime.now().strftime("%Y%m%d")})
-        if not data:
-            return []
-        self._set_cached(cache_key, data)
-        return self._parse_games(data)
-
-    def get_odds(self, match_id: str, markets: List[str] = None) -> List[OddsSnapshot]:
+            # Fallback: try the 'current' endpoint
+            fallback_endpoint = f"{self.base_url}/{league}/current/games.json"
+            data = self._make_request(fallback_endpoint, self.headers, {"date": today})
+        
+        if data:
+            self._set_cached(cache_key, data)
+            return self._parse_games(data)
         return []
 
-    def get_predictions(self, match_id: str) -> Optional[Match]:
-        return None
+    def get_upcoming_matches(self, sport: str = "nba", days: int = 14) -> List[Match]:
+        """Fetch upcoming games"""
+        if not APIConfig.MYSPORTSFEEDS_KEY:
+            return []
+        
+        sport_map = {"NBA": "nba", "NFL": "nfl", "MLB": "mlb", "NHL": "nhl"}
+        league = sport_map.get(sport.upper(), "nba")
+        
+        current_year = datetime.now().year
+        if sport.upper() == "NBA":
+            season = f"{current_year-1}-{current_year}"
+        else:
+            season = str(current_year)
+        
+        endpoint = f"{self.base_url}/{league}/{season}/games.json"
+        params = {"date": datetime.now().strftime("%Y%m%d"), "teamstats": "none"}
+        data = self._make_request(endpoint, self.headers, params)
+        if not data:
+            return []
+        return self._parse_games(data, upcoming_only=True)
 
-    def _parse_games(self, data: Dict) -> List[Match]:
+    def _parse_games(self, data: Dict, upcoming_only: bool = False) -> List[Match]:
         matches = []
-        for game in data.get("games", []):
-            status = game.get("schedule", {}).get("status", "SCHEDULED")
-            is_live = status == "IN_PROGRESS"
+        games = data.get("games", [])
+        for game in games:
+            schedule = game.get("schedule", {})
+            status = schedule.get("status", "SCHEDULED")
+            is_live = status in ["IN_PROGRESS", "LIVE", "1ST", "2ND", "3RD", "4TH", "HALFTIME", "OT"]
+            
+            if upcoming_only and is_live:
+                continue  # skip live games when only upcoming requested
+            
+            home_team = schedule.get("homeTeam", {}).get("name", "Home")
+            away_team = schedule.get("awayTeam", {}).get("name", "Away")
+            
+            # Parse start time
+            start_time_str = schedule.get("startTime", "")
+            start_time = None
+            if start_time_str:
+                try:
+                    start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+                except:
+                    pass
+            
             matches.append(Match(
-                match_id=str(game.get("schedule", {}).get("id", "")),
+                match_id=str(schedule.get("id", "")),
                 provider="MySportsFeeds",
-                league=game.get("schedule", {}).get("league", "Unknown"),
+                league=schedule.get("league", {}).get("name", sport.upper()),
                 league_id="",
-                home_team=game.get("schedule", {}).get("homeTeam", {}).get("name", "Home"),
-                away_team=game.get("schedule", {}).get("awayTeam", {}).get("name", "Away"),
+                home_team=home_team,
+                away_team=away_team,
                 home_score=game.get("score", {}).get("homeScoreTotal"),
                 away_score=game.get("score", {}).get("awayScoreTotal"),
                 status="LIVE" if is_live else status,
-                start_time=datetime.fromisoformat(game.get("schedule", {}).get("startTime", "").replace("Z", "+00:00")) if game.get("schedule", {}).get("startTime") else None,
+                start_time=start_time,
             ))
         return matches
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FOOTBALL-DATA.ORG PROVIDER
