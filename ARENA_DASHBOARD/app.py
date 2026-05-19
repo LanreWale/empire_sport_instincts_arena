@@ -1175,6 +1175,46 @@ def render_arena():
             st.cache_data.clear()
             st.rerun()
 
+        if st.button("🐛 DEBUG NBA API", use_container_width=True):
+            try:
+                import requests, base64
+                from datetime import datetime
+                
+                MYSPORTSFEEDS_KEY = os.getenv("MYSPORTSFEEDS_KEY", "")
+                MYSPORTSFEEDS_PASSWORD = os.getenv("MYSPORTSFEEDS_PASSWORD", "")
+                
+                if MYSPORTSFEEDS_KEY and MYSPORTSFEEDS_PASSWORD:
+                    creds = base64.b64encode(f"{MYSPORTSFEEDS_KEY}:{MYSPORTSFEEDS_PASSWORD}".encode()).decode()
+                    headers = {"Authorization": f"Basic {creds}"}
+                    
+                    # Try different endpoints
+                    current_year = datetime.now().year
+                    season = f"{current_year-1}-{current_year}"  # e.g., 2023-2024
+                    today = datetime.now().strftime("%Y%m%d")
+                    
+                    url = f"https://api.mysportsfeeds.com/v2.1/pull/nba/{season}/games.json"
+                    params = {"date": today}
+                    
+                    st.write(f"Calling: {url}")
+                    r = requests.get(url, headers=headers, params=params, timeout=10)
+                    st.write(f"Status: {r.status_code}")
+                    
+                    if r.status_code == 200:
+                        data = r.json()
+                        games = data.get("games", [])
+                        st.success(f"Found {len(games)} games for {today}")
+                        
+                        # Show first 3 games
+                        for game in games[:3]:
+                            schedule = game.get("schedule", {})
+                            st.write(f"  {schedule.get('awayTeam', {}).get('name')} @ {schedule.get('homeTeam', {}).get('name')} - {schedule.get('status')}")
+                    else:
+                        st.error(f"API Error: {r.text[:200]}")
+                else:
+                    st.error("MySportsFeeds API keys not configured")
+            except Exception as e:
+                st.error(f"Debug error: {e}")
+
         st.markdown("<hr style='border-color:#333; margin:10px 0;'>", unsafe_allow_html=True)
 
     # ─── MAIN AREA: Header + Match Cards ─────────────────────────────────────
