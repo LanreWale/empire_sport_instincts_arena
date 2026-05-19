@@ -1110,19 +1110,36 @@ def render_arena():
         if f'league_options_{key_prefix}' not in st.session_state:
             st.session_state[f'league_options_{key_prefix}'] = [("ALL", "🏆 All Leagues")]
 
-        try:
-            api_leagues = data.get_all_leagues(sport_key)
-            if api_leagues:
+               try:
+            api_leagues = data.get_all_leagues(selected_sport)  # Pass string, not dict
+            if api_leagues and len(api_leagues) > 0:
                 league_options = [("ALL", "🏆 All Leagues")]
                 for league in api_leagues:
-                    display = f"{league['name']}"
-                    if league.get('country'):
-                        display += f" ({league['country']})"
-                    league_options.append((league['id'], display))
-                st.session_state[f'league_options_{key_prefix}'] = league_options
+                    # Handle both dict and object responses
+                    if isinstance(league, dict):
+                        league_id = league.get('id', league.get('league_id', ''))
+                        league_name = league.get('name', 'Unknown')
+                        country = league.get('country', '')
+                    else:
+                        # It's an object (League dataclass)
+                        league_id = getattr(league, 'league_id', getattr(league, 'id', ''))
+                        league_name = getattr(league, 'name', 'Unknown')
+                        country = getattr(league, 'country', '')
+                    
+                    display = f"{league_name}"
+                    if country:
+                        display += f" ({country})"
+                    if league_id:
+                        league_options.append((str(league_id), display))
+                
+                if len(league_options) > 1:
+                    st.session_state[f'league_options_{key_prefix}'] = league_options
+                else:
+                    league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
             else:
                 league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
-        except Exception:
+        except Exception as e:
+            logger.error(f"League fetch error: {e}")
             league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
 
         league_labels = [opt[1] for opt in league_options]
@@ -1142,7 +1159,7 @@ def render_arena():
         )
         selected_league_id = league_ids[league_labels.index(selected_label)]
         st.session_state[f'league_id_{key_prefix}'] = selected_league_id
-
+        
         # Status filter - Added UPCOMING
         status_options = ["ALL", "LIVE", "UPCOMING", "SCHEDULED", "FINISHED"]
         selected_status = st.selectbox(
