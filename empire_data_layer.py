@@ -957,15 +957,6 @@ def render_match_analysis_panel():
                             <div style="color:#888; font-size:0.7rem;">⚽ {p.get("goals", 0)} | 🅰️ {p.get("assists", 0)}</div>
                         </div>
                     </div>
-                ''', unsafe_allow_html=True)
-        else:
-            st.info("No player data available from API.")
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="color:#FFD700; font-family:Orbitron; font-size:0.9rem;">⭐ {p["rating"]}</div>
-                        <div style="color:#888; font-size:0.7rem;">⚽ {p["goals"]} | 🅰️ {p["assists"]}</div>
-                    </div>
-                </div>
 
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
 
@@ -1025,15 +1016,12 @@ def render_match_analysis_panel():
     # AI REASONING
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("##### 🧠 AI ANALYSIS REASONING")
-    if prediction and prediction.reasoning:
-        for reason in prediction.reasoning:
-            st.markdown(f'<div style="padding:8px; margin:4px 0; background:rgba(212,175,55,0.05); border-left:3px solid #D4AF37; border-radius:0 6px 6px 0; color:#e6f1ff;">• {reason}</div>', unsafe_allow_html=True)
-    else:
     if prediction and hasattr(prediction, "reasoning") and prediction.reasoning:
         for reason in prediction.reasoning:
             st.markdown(f'<div style="padding:8px; margin:4px 0; background:rgba(212,175,55,0.05); border-left:3px solid #D4AF37; border-radius:0 6px 6px 0; color:#e6f1ff;">• {reason}</div>', unsafe_allow_html=True)
     else:
         st.info("AI reasoning unavailable. Ensure prediction models are connected to the API.")
+
 def render_arena():
     # Check if a match is selected for detailed view
     if 'selected_match_id' in st.session_state:
