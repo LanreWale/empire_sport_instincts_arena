@@ -923,7 +923,7 @@ def render_match_analysis_panel():
 
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════════════════════
     # HEAD TO HEAD & PLAYER PROFILES
     # ══════════════════════════════════════════════════════════════════════════
     h2h_col, player_col = st.columns(2)
@@ -937,8 +937,6 @@ def render_match_analysis_panel():
                 st.markdown(f'<div style="color:#666; font-size:0.7rem; margin-bottom:6px;">{h.get("competition", "")}</div>', unsafe_allow_html=True)
         else:
             st.info("No head-to-head data available from API.")
-            st.markdown(f'<div class="stat-row"><span class="stat-label">{h["date"]}</span><span class="stat-value">{h["score"]}</span></div>', unsafe_allow_html=True)
-            st.markdown(f'<div style="color:#666; font-size:0.7rem; margin-bottom:6px;">{h["comp"]}</div>', unsafe_allow_html=True)
 
     with player_col:
         st.markdown("##### 👤 KEY PLAYERS")
@@ -957,9 +955,12 @@ def render_match_analysis_panel():
                             <div style="color:#888; font-size:0.7rem;">⚽ {p.get("goals", 0)} | 🅰️ {p.get("assists", 0)}</div>
                         </div>
                     </div>
+                ''', unsafe_allow_html=True)
+        else:
+            st.info("No player data available from API.")
 
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
-
+    
     # ══════════════════════════════════════════════════════════════════════════
     # ALL ODDS CATEGORIES
     # ══════════════════════════════════════════════════════════════════════════
