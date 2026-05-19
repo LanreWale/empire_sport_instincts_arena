@@ -19,9 +19,6 @@ from datetime import datetime, timedelta
 import time
 import logging
 
-# EMPIRE Live Data Integration — imports from project root
-from empire_data_layer import EmpireDashboardData, APIConfig
-
 logger = logging.getLogger(__name__)
 
 st.set_page_config(
