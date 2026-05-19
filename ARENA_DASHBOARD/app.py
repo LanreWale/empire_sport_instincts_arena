@@ -1110,7 +1110,7 @@ def render_arena():
         if f'league_options_{key_prefix}' not in st.session_state:
             st.session_state[f'league_options_{key_prefix}'] = [("ALL", "🏆 All Leagues")]
 
-               try:
+        try:
             api_leagues = data.get_all_leagues(selected_sport)  # Pass string, not dict
             if api_leagues and len(api_leagues) > 0:
                 league_options = [("ALL", "🏆 All Leagues")]
