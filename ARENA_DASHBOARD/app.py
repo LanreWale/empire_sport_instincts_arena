@@ -133,6 +133,14 @@ st.html("""
         50% { box-shadow: 0 0 25px rgba(0, 255, 136, 0.8); }
     }
 
+    /* API Connection Log Background */
+    .connection-log-container {
+        background: #0a0a0f;
+        border-radius: 8px;
+        padding: 8px;
+        border: 1px solid rgba(212, 175, 55, 0.3);
+    }
+
     [data-testid="stDataFrame"] [role="columnheader"],
     [data-testid="stDataFrame"] th {
         background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%) !important;
@@ -553,7 +561,10 @@ def render_sidebar():
                     return "color: #888;"
 
                 styled_log = log_df.style.map(color_status, subset=["STATUS"])
+                # Add background container for the log
+                st.markdown('<div class="connection-log-container">', unsafe_allow_html=True)
                 st.dataframe(styled_log, use_container_width=True, hide_index=True, height=250)
+                st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.info("No connection attempts yet.")
         except Exception as e:
@@ -1079,6 +1090,15 @@ def render_arena():
             index=sport_names.index(st.session_state.selected_sport),
             key="sidebar_sport_select"
         )
+        
+        # Clear league cache when sport changes
+        if 'prev_sport' not in st.session_state:
+            st.session_state.prev_sport = selected_sport
+        elif st.session_state.prev_sport != selected_sport:
+            key_prefix_old = st.session_state.prev_sport.replace(" ", "_").replace("⚽", "f").replace("🏀", "b").replace("🏈", "nfl").replace("🎾", "t").replace("🏒", "nhl")
+            st.session_state.pop(f'league_options_{key_prefix_old}', None)
+            st.session_state.prev_sport = selected_sport
+        
         st.session_state.selected_sport = selected_sport
 
         sport_key = SPORT_OPTIONS[selected_sport]
@@ -1123,8 +1143,8 @@ def render_arena():
         selected_league_id = league_ids[league_labels.index(selected_label)]
         st.session_state[f'league_id_{key_prefix}'] = selected_league_id
 
-        # Status filter
-        status_options = ["ALL", "LIVE", "SCHEDULED", "FINISHED"]
+        # Status filter - Added UPCOMING
+        status_options = ["ALL", "LIVE", "UPCOMING", "SCHEDULED", "FINISHED"]
         selected_status = st.selectbox(
             "📊 MATCH STATUS",
             options=status_options,
@@ -1147,7 +1167,7 @@ def render_arena():
     try:
         if selected_status == "LIVE":
             matches_df = data.get_live_matches_df(sport_key, selected_league_id)
-        elif selected_status == "SCHEDULED":
+        elif selected_status == "UPCOMING" or selected_status == "SCHEDULED":
             matches_df = data.get_upcoming_matches_df(sport_key)
             if selected_league_id != "ALL" and not matches_df.empty and "LEAGUE" in matches_df.columns:
                 league_name = None
@@ -1160,16 +1180,22 @@ def render_arena():
         elif selected_status == "FINISHED":
             matches_df = data.router.get_matches_by_status("FINISHED", sport_key, selected_league_id)
         else:  # ALL
-            live_df = data.get_live_matches_df(sport_key, selected_league_id)
+            live_df = data.get_live_matches_df(sport_key)
             sched_df = data.get_upcoming_matches_df(sport_key)
-            if selected_league_id != "ALL" and not sched_df.empty and "LEAGUE" in sched_df.columns:
+            
+            # Apply league filter to both dataframes
+            if selected_league_id != "ALL":
                 league_name = None
                 for lid, label in league_options:
                     if lid == selected_league_id:
                         league_name = label.replace("🏆 ", "").split(" (")[0]
                         break
                 if league_name:
-                    sched_df = sched_df[sched_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
+                    if not live_df.empty and "LEAGUE" in live_df.columns:
+                        live_df = live_df[live_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
+                    if not sched_df.empty and "LEAGUE" in sched_df.columns:
+                        sched_df = sched_df[sched_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
+            
             matches_df = pd.concat([live_df, sched_df], ignore_index=True) if not live_df.empty else sched_df
     except Exception as e:
         st.error(f"Error fetching matches: {str(e)[:100]}")
