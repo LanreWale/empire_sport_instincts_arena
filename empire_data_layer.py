@@ -966,7 +966,6 @@ def render_match_analysis_panel():
                         <div style="color:#888; font-size:0.7rem;">⚽ {p["goals"]} | 🅰️ {p["assists"]}</div>
                     </div>
                 </div>
-            ''', unsafe_allow_html=True)
 
     st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
 
