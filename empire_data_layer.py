@@ -362,14 +362,12 @@ class DataProvider:
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # API-SPORTS (API-FOOTBALL) PROVIDER
-# Primary football data: live scores, fixtures, statistics, form, predictions
 # ════════════════════════════════════════════════════════════════════════════════
 
 class APISportsProvider(DataProvider):
     def __init__(self):
         super().__init__("API-SPORTS", APIConfig.API_SPORTS_PRIORITY)
         self.base_url = APIConfig.API_SPORTS_URL
-        # FIXED: Correct header for direct API-SPORTS access
         self.headers = {
             "x-apisports-key": APIConfig.API_SPORTS_KEY,
         }
@@ -750,13 +748,12 @@ class TheOddsAPIProvider(DataProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SPORTMONKS PROVIDER - FIXED BASE URL
+# SPORTMONKS PROVIDER
 # ════════════════════════════════════════════════════════════════════════════════
 
 class SportmonksProvider(DataProvider):
     def __init__(self):
         super().__init__("Sportmonks", APIConfig.SPORTMONKS_PRIORITY)
-        # FIXED: Correct base URL with /api/v3/
         self.base_url = "https://api.sportmonks.com/api/v3/football"
         self.rate_limit_delay = 1.5
 
@@ -902,7 +899,7 @@ class SportmonksProvider(DataProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# THESPORTSDB PROVIDER - FIXED URL WITH API KEY IN PATH
+# THESPORTSDB PROVIDER
 # ════════════════════════════════════════════════════════════════════════════════
 
 class TheSportsDBProvider(DataProvider):
@@ -921,7 +918,6 @@ class TheSportsDBProvider(DataProvider):
     def _make_request_v2(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         if not APIConfig.THESPORTSDB_KEY:
             return None
-        # FIXED: Include API key in URL path
         url = f"{self.base_url_v2}/{APIConfig.THESPORTSDB_KEY}/{endpoint}"
         return self._make_request(url, headers=self.headers_v2, params=params)
 
@@ -1097,11 +1093,9 @@ class MySportsFeedsProvider(DataProvider):
         if not APIConfig.MYSPORTSFEEDS_KEY:
             return []
         
-        # Map sport names
         sport_map = {"NBA": "nba", "NFL": "nfl", "MLB": "mlb", "NHL": "nhl"}
         league_code = sport_map.get(sport.upper(), "nba")
         
-        # Calculate season (NBA uses 2024-2025 format)
         current_year = datetime.now().year
         if sport.upper() == "NBA":
             season = f"{current_year-1}-{current_year}"
@@ -1119,7 +1113,6 @@ class MySportsFeedsProvider(DataProvider):
         
         data = self._make_request(url, self.headers, params)
         if not data:
-            # Fallback to original endpoint
             data = self._make_request(f"{self.base_url}/{league_code}/current/games.json", self.headers, {"date": today})
         
         if data:
@@ -1289,7 +1282,6 @@ class EmpirePredictionEngine:
                     except Exception:
                         continue
         
-        # Get API predictions
         api_pred = None
         for provider in self.router.providers:
             if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
@@ -1300,7 +1292,6 @@ class EmpirePredictionEngine:
                 except Exception:
                     continue
         
-        # Calculate base probabilities
         if api_pred and api_pred.home_win_prob:
             home_prob = api_pred.home_win_prob
             draw_prob = api_pred.draw_prob or 33.3
@@ -1309,7 +1300,6 @@ class EmpirePredictionEngine:
         else:
             home_prob, draw_prob, away_prob = 33.3, 33.3, 33.3
         
-        # Add form reasoning
         if home_form and home_form.last_5_results:
             form_str = "-".join(home_form.last_5_results)
             reasoning.append(f"Home form (last 5): {form_str} | GF:{home_form.goals_scored} GA:{home_form.goals_conceded}")
@@ -1320,7 +1310,6 @@ class EmpirePredictionEngine:
         if not reasoning:
             reasoning.append("Analyzing match data from API...")
         
-        # Determine confidence
         max_prob = max(home_prob, draw_prob, away_prob)
         if max_prob > 55:
             confidence = "HIGH"
@@ -1471,53 +1460,162 @@ class EmpireDataRouter:
                                 endpoint_tested="_health_check()")
             logger.warning("No live matches from any provider. This is normal if no games are in progress.")
 
-    # FIXED: get_all_leagues with US sports support
+    # ========== COMPLETE GET_ALL_LEAGUES WITH ALL SPORTS ==========
     def get_all_leagues(self, sport: str = "football") -> List[Dict]:
-        # ADD US SPORTS LEAGUES
-        if sport.upper() in ["NBA", "NFL", "MLB", "NHL"]:
-            sport_name = sport.upper()
-            return [
-                {"id": sport_name, "name": f"{sport_name} (All Teams)", "sport": sport, "country": "USA"},
-                {"id": f"{sport_name}_EAST", "name": f"{sport_name} East Conference", "sport": sport, "country": "USA"},
-                {"id": f"{sport_name}_WEST", "name": f"{sport_name} West Conference", "sport": sport, "country": "USA"},
-            ]
+        sport_name = sport.upper()
         
-        # For soccer/football - existing code
-        all_leagues = []
-        for provider in self.providers:
-            if provider.name == "TheSportsDB":
-                try:
-                    leagues = provider.get_all_leagues(sport)
-                    if leagues:
-                        for league in leagues:
-                            all_leagues.append({"id": league.league_id, "name": league.name,
-                                               "sport": league.sport, "country": league.country or ""})
-                        logger.info(f"TheSportsDB returned {len(all_leagues)} leagues")
-                        if all_leagues:
-                            return all_leagues
-                except Exception as e:
-                    logger.warning(f"TheSportsDB league fetch failed: {e}")
-
-        if not all_leagues:
+        # SOCCER / FOOTBALL
+        if sport_name in ["SOCCER", "FOOTBALL"]:
+            all_leagues = []
             for provider in self.providers:
-                if provider.name == "API-SPORTS":
+                if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
                     try:
-                        leagues = provider.get_all_leagues(sport)
+                        leagues = provider.get_all_leagues()
                         if leagues:
                             for league in leagues:
                                 all_leagues.append({"id": league.league_id, "name": league.name,
-                                                   "sport": league.sport, "country": league.country or ""})
-                            logger.info(f"API-SPORTS returned {len(all_leagues)} leagues")
-                            if all_leagues:
-                                return all_leagues
+                                                   "sport": "Soccer", "country": league.country or ""})
+                            logger.info(f"API-SPORTS returned {len(all_leagues)} soccer leagues")
+                            return all_leagues[:200]
                     except Exception as e:
                         logger.warning(f"API-SPORTS league fetch failed: {e}")
-
-        if not all_leagues:
-            logger.warning("No dedicated league API — returning default")
-            return [{"id": "ALL", "name": "All Leagues", "sport": sport, "country": ""}]
-
-        return all_leagues
+            
+            if not all_leagues:
+                for provider in self.providers:
+                    if provider.name == "TheSportsDB":
+                        try:
+                            leagues = provider.get_all_leagues()
+                            if leagues:
+                                for league in leagues:
+                                    if league.sport.lower() in ["soccer", "football"]:
+                                        all_leagues.append({"id": league.league_id, "name": league.name,
+                                                           "sport": "Soccer", "country": league.country or ""})
+                                logger.info(f"TheSportsDB returned {len(all_leagues)} soccer leagues")
+                                return all_leagues[:200]
+                        except Exception as e:
+                            logger.warning(f"TheSportsDB league fetch failed: {e}")
+            
+            if not all_leagues:
+                major_leagues = [
+                    {"id": "PL", "name": "Premier League", "country": "England"},
+                    {"id": "LALIGA", "name": "La Liga", "country": "Spain"},
+                    {"id": "SERIEA", "name": "Serie A", "country": "Italy"},
+                    {"id": "BUNDESLIGA", "name": "Bundesliga", "country": "Germany"},
+                    {"id": "LIGUE1", "name": "Ligue 1", "country": "France"},
+                    {"id": "CHAMPIONS", "name": "UEFA Champions League", "country": "Europe"},
+                    {"id": "EUROPA", "name": "UEFA Europa League", "country": "Europe"},
+                    {"id": "MLS", "name": "Major League Soccer", "country": "USA"},
+                ]
+                return [{"id": l["id"], "name": l["name"], "sport": "Soccer", "country": l["country"]} for l in major_leagues]
+        
+        # NBA
+        elif sport_name == "NBA":
+            return [
+                {"id": "NBA_ALL", "name": "All NBA Teams", "country": "USA"},
+                {"id": "NBA_EAST", "name": "Eastern Conference", "country": "USA"},
+                {"id": "NBA_WEST", "name": "Western Conference", "country": "USA"},
+                {"id": "LAL", "name": "Los Angeles Lakers", "country": "USA"},
+                {"id": "GSW", "name": "Golden State Warriors", "country": "USA"},
+                {"id": "BOS", "name": "Boston Celtics", "country": "USA"},
+                {"id": "MIL", "name": "Milwaukee Bucks", "country": "USA"},
+                {"id": "PHX", "name": "Phoenix Suns", "country": "USA"},
+                {"id": "MIA", "name": "Miami Heat", "country": "USA"},
+                {"id": "DEN", "name": "Denver Nuggets", "country": "USA"},
+                {"id": "PHI", "name": "Philadelphia 76ers", "country": "USA"},
+                {"id": "DAL", "name": "Dallas Mavericks", "country": "USA"},
+            ]
+        
+        # NFL
+        elif sport_name == "NFL":
+            return [
+                {"id": "NFL_ALL", "name": "All NFL Teams", "country": "USA"},
+                {"id": "NFL_AFC", "name": "AFC", "country": "USA"},
+                {"id": "NFL_NFC", "name": "NFC", "country": "USA"},
+                {"id": "KC", "name": "Kansas City Chiefs", "country": "USA"},
+                {"id": "SF", "name": "San Francisco 49ers", "country": "USA"},
+                {"id": "PHI", "name": "Philadelphia Eagles", "country": "USA"},
+                {"id": "CIN", "name": "Cincinnati Bengals", "country": "USA"},
+                {"id": "BUF", "name": "Buffalo Bills", "country": "USA"},
+                {"id": "DAL", "name": "Dallas Cowboys", "country": "USA"},
+                {"id": "BAL", "name": "Baltimore Ravens", "country": "USA"},
+            ]
+        
+        # MLB
+        elif sport_name == "MLB":
+            return [
+                {"id": "MLB_ALL", "name": "All MLB Teams", "country": "USA"},
+                {"id": "MLB_AL", "name": "American League", "country": "USA"},
+                {"id": "MLB_NL", "name": "National League", "country": "USA"},
+                {"id": "LAD", "name": "Los Angeles Dodgers", "country": "USA"},
+                {"id": "NYY", "name": "New York Yankees", "country": "USA"},
+                {"id": "HOU", "name": "Houston Astros", "country": "USA"},
+                {"id": "ATL", "name": "Atlanta Braves", "country": "USA"},
+                {"id": "NYM", "name": "New York Mets", "country": "USA"},
+            ]
+        
+        # NHL
+        elif sport_name == "NHL":
+            return [
+                {"id": "NHL_ALL", "name": "All NHL Teams", "country": "USA/Canada"},
+                {"id": "COL", "name": "Colorado Avalanche", "country": "USA"},
+                {"id": "TB", "name": "Tampa Bay Lightning", "country": "USA"},
+                {"id": "VGK", "name": "Vegas Golden Knights", "country": "USA"},
+                {"id": "BOS", "name": "Boston Bruins", "country": "USA"},
+                {"id": "TOR", "name": "Toronto Maple Leafs", "country": "Canada"},
+            ]
+        
+        # UFC
+        elif sport_name == "UFC":
+            return [
+                {"id": "UFC_ALL", "name": "All UFC Events", "country": "World"},
+                {"id": "UFC_MAIN", "name": "Main Card", "country": "World"},
+                {"id": "UFC_PRELIMS", "name": "Prelims", "country": "World"},
+            ]
+        
+        # Formula 1
+        elif sport_name == "FORMULA 1":
+            return [
+                {"id": "F1_ALL", "name": "All Races", "country": "World"},
+                {"id": "F1_2025", "name": "2025 Season", "country": "World"},
+                {"id": "MON", "name": "Monaco GP", "country": "Monaco"},
+                {"id": "GBR", "name": "British GP", "country": "UK"},
+                {"id": "ITA", "name": "Italian GP", "country": "Italy"},
+            ]
+        
+        # Tennis
+        elif sport_name == "TENNIS":
+            return [
+                {"id": "TENNIS_ALL", "name": "All Tournaments", "country": "World"},
+                {"id": "WIMBLEDON", "name": "Wimbledon", "country": "UK"},
+                {"id": "US_OPEN", "name": "US Open", "country": "USA"},
+                {"id": "AUS_OPEN", "name": "Australian Open", "country": "Australia"},
+                {"id": "FRENCH_OPEN", "name": "Roland Garros", "country": "France"},
+                {"id": "ATP", "name": "ATP Tour", "country": "World"},
+                {"id": "WTA", "name": "WTA Tour", "country": "World"},
+            ]
+        
+        # Cricket
+        elif sport_name == "CRICKET":
+            return [
+                {"id": "CRICKET_ALL", "name": "All Matches", "country": "World"},
+                {"id": "IPL", "name": "Indian Premier League", "country": "India"},
+                {"id": "BBL", "name": "Big Bash League", "country": "Australia"},
+                {"id": "TEST", "name": "Test Matches", "country": "World"},
+                {"id": "ODI", "name": "ODI Internationals", "country": "World"},
+                {"id": "T20", "name": "T20 Internationals", "country": "World"},
+            ]
+        
+        # Golf
+        elif sport_name == "GOLF":
+            return [
+                {"id": "GOLF_ALL", "name": "All Tournaments", "country": "World"},
+                {"id": "THE_MASTERS", "name": "The Masters", "country": "USA"},
+                {"id": "PGA", "name": "PGA Tour", "country": "USA"},
+                {"id": "THE_OPEN", "name": "The Open Championship", "country": "UK"},
+                {"id": "US_OPEN", "name": "US Open", "country": "USA"},
+            ]
+        
+        return [{"id": "ALL", "name": "All Events", "sport": sport, "country": "World"}]
 
     def get_live_matches_by_league(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
         if not league_id or league_id == "ALL":
@@ -1835,6 +1933,94 @@ class EmpireDashboardData:
         if not all_odds:
             return pd.DataFrame(columns=["BOOKMAKER", "MARKET", "1", "X", "2", "O", "U", "TIME"])
         return pd.DataFrame([o.to_dataframe_row() for o in all_odds])
+
+    def get_team_form(self, team_name: str, match_id: str) -> Optional[Dict]:
+        match = self.router._find_match_by_id(match_id)
+        if match and match.home_team_id and team_name == match.home_team:
+            team_id = match.home_team_id
+        elif match and match.away_team_id and team_name == match.away_team:
+            team_id = match.away_team_id
+        else:
+            return None
+        
+        for provider in self.router.providers:
+            if provider.name == "API-SPORTS":
+                try:
+                    form = provider.get_team_form(team_id)
+                    if form:
+                        return {
+                            "form": form.last_5_results,
+                            "stats": {
+                                "record": f"{form.last_5_results.count('W')}W-{form.last_5_results.count('D')}D-{form.last_5_results.count('L')}L",
+                                "goals_scored": form.goals_scored,
+                                "goals_conceded": form.goals_conceded,
+                                "clean_sheets": form.clean_sheets
+                            }
+                        }
+                except Exception:
+                    continue
+        return None
+
+    def get_head_to_head(self, home: str, away: str, match_id: str) -> List[Dict]:
+        match = self.router._find_match_by_id(match_id)
+        if not match or not match.home_team_id or not match.away_team_id:
+            return []
+        
+        for provider in self.router.providers:
+            if provider.name == "API-SPORTS":
+                try:
+                    h2h_data = provider.get_h2h(match.home_team_id, match.away_team_id)
+                    if h2h_data:
+                        fixtures = h2h_data.get("response", [])
+                        results = []
+                        for f in fixtures[:10]:
+                            fixture = f.get("fixture", {})
+                            goals = f.get("goals", {})
+                            league = f.get("league", {})
+                            results.append({
+                                "date": fixture.get("date", "")[:10] if fixture.get("date") else "N/A",
+                                "score": f"{goals.get('home', 0)} - {goals.get('away', 0)}",
+                                "competition": league.get("name", "Unknown")
+                            })
+                        return results
+                except Exception:
+                    continue
+        return []
+
+    def get_key_players(self, match_id: str) -> List[Dict]:
+        return []
+
+    def get_match_odds(self, match_id: str) -> Dict:
+        odds_list = self.get_odds_comparison(match_id)
+        if odds_list.empty:
+            return {}
+        
+        result = {"1x2": {}, "over_under": {}, "btts": {}}
+        for _, row in odds_list.iterrows():
+            market = str(row.get("MARKET", "")).lower()
+            if market in ["h2h", "match_winner", "1x2"]:
+                result["1x2"] = {
+                    "home": row.get("1"),
+                    "draw": row.get("X"),
+                    "away": row.get("2")
+                }
+            elif "over_under" in market or market == "totals":
+                result["over_under"] = {
+                    "over_25": row.get("O"),
+                    "under_25": row.get("U")
+                }
+            elif "btts" in market or "both_teams" in market:
+                result["btts"] = {
+                    "yes": row.get("1"),
+                    "no": row.get("2")
+                }
+        return result
+
+    def get_ai_reasoning(self, match_id: str) -> List[str]:
+        pred = self.get_match_prediction(match_id)
+        if pred and hasattr(pred, 'reasoning'):
+            return pred.reasoning
+        return []
 
     def should_refresh(self) -> bool:
         return (datetime.now() - self.last_refresh).seconds > self.refresh_interval
