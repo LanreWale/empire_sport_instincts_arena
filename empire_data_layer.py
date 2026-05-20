@@ -69,17 +69,6 @@ class APIConfig:
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0
 
-    @classmethod
-    def get_missing_keys(cls) -> List[str]:
-        required = {
-            "API_SPORTS_KEY": cls.API_SPORTS_KEY,
-            "ODDS_API_KEY": cls.ODDS_API_KEY,
-            "SPORTMONKS_KEY": cls.SPORTMONKS_KEY,
-            "MYSPORTSFEEDS_KEY": cls.MYSPORTSFEEDS_KEY,
-            "FOOTBALL_DATA_KEY": cls.FOOTBALL_DATA_KEY,
-        }
-        return [k for k, v in required.items() if not v]
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATA MODELS
@@ -102,9 +91,6 @@ class Match:
     start_time: Optional[datetime] = None
     venue: Optional[str] = None
     country: Optional[str] = None
-    home_odds: Optional[float] = None
-    draw_odds: Optional[float] = None
-    away_odds: Optional[float] = None
 
     def to_dataframe_row(self) -> Dict:
         return {
@@ -114,9 +100,6 @@ class Match:
             "MATCH": f"{self.home_team} vs {self.away_team}",
             "STATUS": "🔴 LIVE" if self.status in ["LIVE", "1H", "2H", "IN_PROGRESS"] else ("⏳ " + self.status if self.status != "SCHEDULED" else "UPCOMING"),
             "SCORE": f"{self.home_score}-{self.away_score}" if self.home_score is not None else "vs",
-            "HOME": self.home_odds or "-",
-            "DRAW": self.draw_odds or "-",
-            "AWAY": self.away_odds or "-",
         }
 
 
@@ -156,10 +139,8 @@ class DataProvider:
                 if response.status_code == 200:
                     return response.json()
                 else:
-                    logger.warning(f"{self.name}: HTTP {response.status_code} for {url}")
                     return None
             except Exception as e:
-                logger.error(f"{self.name}: Request failed (attempt {attempt + 1}): {e}")
                 if attempt < APIConfig.MAX_RETRIES - 1:
                     time.sleep(APIConfig.RETRY_DELAY * (attempt + 1))
         return None
@@ -264,8 +245,6 @@ class APISportsProvider(DataProvider):
                 league_id=str(league.get("id", "")),
                 home_team=teams.get("home", {}).get("name", "Home"),
                 away_team=teams.get("away", {}).get("name", "Away"),
-                home_team_id=str(teams.get("home", {}).get("id", "")),
-                away_team_id=str(teams.get("away", {}).get("id", "")),
                 home_score=goals.get("home"),
                 away_score=goals.get("away"),
                 status=status.get("short", "SCHEDULED"),
@@ -301,37 +280,6 @@ class MySportsFeedsProvider(DataProvider):
             return f"{current_year-1}-{current_year}"
         return str(current_year)
 
-    def get_all_leagues(self, sport: str) -> List[League]:
-        if not self.headers:
-            return []
-        sport_code = self._get_sport_code(sport)
-        season = self._get_season(sport)
-        
-        cache_key = self._get_cache_key(f"{sport_code}_teams", {"season": season})
-        cached = self._get_cached(cache_key, 86400)
-        if cached:
-            return self._parse_teams(cached, sport)
-        
-        url = f"{self.base_url}/{sport_code}/{season}/team_active_roster.json"
-        data = self._make_request(url, self.headers)
-        if data:
-            self._set_cached(cache_key, data)
-            return self._parse_teams(data, sport)
-        return []
-
-    def _parse_teams(self, data: Dict, sport: str) -> List[League]:
-        leagues = []
-        teams = data.get("teams", [])
-        for team in teams:
-            team_data = team.get("team", {})
-            leagues.append(League(
-                league_id=team_data.get("id", ""),
-                name=team_data.get("name", "Unknown"),
-                sport=sport,
-                country=team_data.get("city", ""),
-            ))
-        return leagues
-
     def get_live_matches(self, sport: str) -> List[Match]:
         if not self.headers:
             return []
@@ -344,12 +292,10 @@ class MySportsFeedsProvider(DataProvider):
         if cached:
             return self._parse_games(cached, sport)
         
-        # Try the /date/ endpoint first
         url = f"{self.base_url}/{sport_code}/{season}/date/{today}/games.json"
         data = self._make_request(url, self.headers)
         
         if not data:
-            # Fallback to games endpoint with date parameter
             url = f"{self.base_url}/{sport_code}/{season}/games.json"
             data = self._make_request(url, self.headers, {"date": today})
         
@@ -374,9 +320,6 @@ class MySportsFeedsProvider(DataProvider):
         url = f"{self.base_url}/{sport_code}/{season}/games.json"
         data = self._make_request(url, self.headers, {"fordate": today, "todate": future})
         
-        if not data:
-            data = self._make_request(url, self.headers, {"date": today})
-        
         if data:
             self._set_cached(cache_key, data)
             return self._parse_games(data, sport, upcoming_only=True)
@@ -389,7 +332,7 @@ class MySportsFeedsProvider(DataProvider):
         for game in games:
             schedule = game.get("schedule", game)
             status = schedule.get("status", "SCHEDULED")
-            is_live = status in ["IN_PROGRESS", "LIVE", "1ST", "2ND", "3RD", "4TH", "OT", "HALFTIME"]
+            is_live = status in ["IN_PROGRESS", "LIVE", "1ST", "2ND", "3RD", "4TH", "OT"]
             
             if upcoming_only and is_live:
                 continue
@@ -402,10 +345,6 @@ class MySportsFeedsProvider(DataProvider):
             
             home_score = game.get("score", {}).get("homeScoreTotal") if "score" in game else None
             away_score = game.get("score", {}).get("awayScoreTotal") if "score" in game else None
-            
-            if "homeScore" in game:
-                home_score = game.get("homeScore")
-                away_score = game.get("awayScore")
             
             start_time = None
             start_time_str = schedule.get("startTime", "")
@@ -445,39 +384,6 @@ class TheSportsDBProvider(DataProvider):
         url = f"{self.base_url}/{self.api_key}/{endpoint}"
         return super()._make_request(url)
 
-    def get_all_leagues(self, sport_type: str) -> List[League]:
-        cache_key = self._get_cache_key(f"leagues_{sport_type}", {})
-        cached = self._get_cached(cache_key, 86400)
-        if cached:
-            return self._parse_leagues(cached, sport_type)
-        
-        data = self._make_request("all_leagues.php")
-        if not data:
-            return []
-        self._set_cached(cache_key, data)
-        return self._parse_leagues(data, sport_type)
-
-    def _parse_leagues(self, data: Dict, sport_type: str) -> List[League]:
-        leagues = []
-        sport_mapping = {
-            "UFC": "MMA",
-            "Formula 1": "Motorsport",
-            "Tennis": "Tennis",
-            "Cricket": "Cricket",
-            "Golf": "Golf"
-        }
-        target_sport = sport_mapping.get(sport_type, sport_type)
-        
-        for league in data.get("leagues", []):
-            if league.get("strSport") == target_sport:
-                leagues.append(League(
-                    league_id=league.get("idLeague", ""),
-                    name=league.get("strLeague", "Unknown"),
-                    sport=sport_type,
-                    country=league.get("strCountry", "")
-                ))
-        return leagues
-
     def get_live_matches(self, sport: str) -> List[Match]:
         data = self._make_request("livescore.php")
         if not data:
@@ -500,7 +406,12 @@ class TheSportsDBProvider(DataProvider):
         return matches
 
     def get_upcoming_matches(self, sport: str) -> List[Match]:
-        data = self._make_request(f"eventsnextleague.php?id={sport}")
+        sport_id_map = {
+            "UFC": "4467", "Formula 1": "4370", "Tennis": "4467", 
+            "Cricket": "4473", "Golf": "4426"
+        }
+        sport_id = sport_id_map.get(sport, "4467")
+        data = self._make_request(f"eventsnextleague.php?id={sport_id}")
         if not data:
             return []
         matches = []
@@ -518,79 +429,6 @@ class TheSportsDBProvider(DataProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# THE ODDS API PROVIDER (BETTING ODDS)
-# ════════════════════════════════════════════════════════════════════════════════
-
-class TheOddsAPIProvider(DataProvider):
-    def __init__(self):
-        super().__init__("TheOddsAPI", 1)
-        self.base_url = APIConfig.ODDS_API_URL
-
-    def get_odds(self, sport: str = "soccer") -> List[Dict]:
-        if not APIConfig.ODDS_API_KEY:
-            return []
-        cache_key = self._get_cache_key("odds", {"sport": sport})
-        cached = self._get_cached(cache_key, 60)
-        if cached:
-            return cached
-        data = self._make_request(f"{self.base_url}/sports/{sport}/odds", 
-                                   params={"apiKey": APIConfig.ODDS_API_KEY, "regions": "us", "markets": "h2h"})
-        if data:
-            self._set_cached(cache_key, data)
-            return data
-        return []
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# SPORTMONKS PROVIDER (ADVANCED STATS)
-# ════════════════════════════════════════════════════════════════════════════════
-
-class SportmonksProvider(DataProvider):
-    def __init__(self):
-        super().__init__("Sportmonks", 2)
-        self.base_url = APIConfig.SPORTMONKS_URL
-
-    def get_predictions(self, match_id: str) -> Optional[Dict]:
-        if not APIConfig.SPORTMONKS_KEY:
-            return None
-        data = self._make_request(f"{self.base_url}/predictions/probabilities/fixture/{match_id}",
-                                   params={"api_token": APIConfig.SPORTMONKS_KEY})
-        return data
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# FOOTBALL-DATA.ORG PROVIDER
-# ════════════════════════════════════════════════════════════════════════════════
-
-class FootballDataProvider(DataProvider):
-    def __init__(self):
-        super().__init__("Football-Data", 3)
-        self.base_url = APIConfig.FOOTBALL_DATA_URL
-        self.headers = {"X-Auth-Token": APIConfig.FOOTBALL_DATA_KEY} if APIConfig.FOOTBALL_DATA_KEY else {}
-
-    def get_matches(self) -> List[Match]:
-        if not APIConfig.FOOTBALL_DATA_KEY:
-            return []
-        today = datetime.now().strftime("%Y-%m-%d")
-        data = self._make_request(f"{self.base_url}/matches", self.headers, {"dateFrom": today, "dateTo": today})
-        if not data:
-            return []
-        matches = []
-        for match in data.get("matches", []):
-            matches.append(Match(
-                match_id=str(match.get("id", "")),
-                provider="Football-Data",
-                league=match.get("competition", {}).get("name", "Unknown"),
-                league_id=str(match.get("competition", {}).get("id", "")),
-                home_team=match.get("homeTeam", {}).get("name", "Home"),
-                away_team=match.get("awayTeam", {}).get("name", "Away"),
-                status=match.get("status", "SCHEDULED"),
-                start_time=datetime.fromisoformat(match.get("utcDate", "").replace("Z", "+00:00")) if match.get("utcDate") else None,
-            ))
-        return matches
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # EMPIRE DATA ROUTER
 # ════════════════════════════════════════════════════════════════════════════════
 
@@ -599,9 +437,6 @@ class EmpireDataRouter:
         self.api_sports = APISportsProvider()
         self.my_sports_feeds = MySportsFeedsProvider()
         self.the_sports_db = TheSportsDBProvider()
-        self.odds_api = TheOddsAPIProvider()
-        self.sportmonks = SportmonksProvider()
-        self.football_data = FootballDataProvider()
         self.connection_log = []
         self._log_initial_status()
 
@@ -612,7 +447,6 @@ class EmpireDataRouter:
             "STATUS": status,
             "DETAIL": detail,
         })
-        logger.info(f"[{provider}] {status}: {detail}")
 
     def _log_initial_status(self):
         if APIConfig.API_SPORTS_KEY:
@@ -620,12 +454,6 @@ class EmpireDataRouter:
         if APIConfig.MYSPORTSFEEDS_KEY:
             self._log("MySportsFeeds", "ACTIVE", "NBA/NFL/MLB/NHL data provider ready")
         self._log("TheSportsDB", "ACTIVE", "UFC/F1/Tennis/Cricket/Golf data provider ready")
-        if APIConfig.ODDS_API_KEY:
-            self._log("TheOddsAPI", "ACTIVE", "Odds provider ready")
-        if APIConfig.SPORTMONKS_KEY:
-            self._log("Sportmonks", "ACTIVE", "Advanced stats provider ready")
-        if APIConfig.FOOTBALL_DATA_KEY:
-            self._log("Football-Data", "ACTIVE", "Soccer provider ready")
 
     def get_connection_log_df(self) -> pd.DataFrame:
         if not self.connection_log:
@@ -643,61 +471,44 @@ class EmpireDataRouter:
         ]
 
     def get_all_leagues(self, sport_type: str) -> List[Dict]:
-        logger.info(f"Fetching leagues for sport: {sport_type}")
-        
         if sport_type == "Soccer":
             leagues = self.api_sports.get_all_leagues()
             if leagues:
                 self._log("API-SPORTS", "SUCCESS", f"Retrieved {len(leagues)} soccer leagues")
                 return [{"id": l.league_id, "name": l.name, "sport": "Soccer", "country": l.country or ""} for l in leagues]
-        
         elif sport_type in ["NBA", "NFL", "MLB", "NHL"]:
-            leagues = self.my_sports_feeds.get_all_leagues(sport_type)
-            if leagues:
-                self._log("MySportsFeeds", "SUCCESS", f"Retrieved {len(leagues)} {sport_type} teams")
-                return [{"id": l.league_id, "name": l.name, "sport": sport_type, "country": l.country or "USA"} for l in leagues]
-        
+            self._log("MySportsFeeds", "INFO", f"League data for {sport_type} comes from team selection")
+            return [{"id": "ALL", "name": "All Teams", "sport": sport_type, "country": "USA"}]
         elif sport_type in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf"]:
-            leagues = self.the_sports_db.get_all_leagues(sport_type)
-            if leagues:
-                self._log("TheSportsDB", "SUCCESS", f"Retrieved {len(leagues)} {sport_type} leagues")
-                return [{"id": l.league_id, "name": l.name, "sport": sport_type, "country": l.country or ""} for l in leagues]
-        
-        self._log("SYSTEM", "WARNING", f"No leagues found for {sport_type}")
-        return []
+            self._log("TheSportsDB", "INFO", f"League data for {sport_type} is event-based")
+            return [{"id": "ALL", "name": "All Events", "sport": sport_type, "country": "World"}]
+        return [{"id": "ALL", "name": "All Events", "sport": sport_type, "country": ""}]
 
     def get_live_matches(self, sport_type: str, league_id: str = None) -> pd.DataFrame:
-        logger.info(f"Fetching live matches for sport: {sport_type}")
-        
         if sport_type == "Soccer":
             matches = self.api_sports.get_live_matches(league_id)
             if matches:
                 self._log("API-SPORTS", "SUCCESS", f"Found {len(matches)} live soccer matches")
                 return pd.DataFrame([m.to_dataframe_row() for m in matches])
             else:
-                self._log("API-SPORTS", "EMPTY", "No live soccer matches at this time")
-        
+                self._log("API-SPORTS", "EMPTY", "No live soccer matches")
         elif sport_type in ["NBA", "NFL", "MLB", "NHL"]:
             matches = self.my_sports_feeds.get_live_matches(sport_type)
             if matches:
                 self._log("MySportsFeeds", "SUCCESS", f"Found {len(matches)} live {sport_type} matches")
                 return pd.DataFrame([m.to_dataframe_row() for m in matches])
             else:
-                self._log("MySportsFeeds", "EMPTY", f"No live {sport_type} matches at this time")
-        
+                self._log("MySportsFeeds", "EMPTY", f"No live {sport_type} matches")
         elif sport_type in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf"]:
             matches = self.the_sports_db.get_live_matches(sport_type)
             if matches:
                 self._log("TheSportsDB", "SUCCESS", f"Found {len(matches)} live {sport_type} events")
                 return pd.DataFrame([m.to_dataframe_row() for m in matches])
             else:
-                self._log("TheSportsDB", "EMPTY", f"No live {sport_type} events at this time")
-        
+                self._log("TheSportsDB", "EMPTY", f"No live {sport_type} events")
         return pd.DataFrame()
 
     def get_upcoming_matches(self, sport_type: str) -> pd.DataFrame:
-        logger.info(f"Fetching upcoming matches for sport: {sport_type}")
-        
         if sport_type == "Soccer":
             matches = self.api_sports.get_upcoming_matches()
             if matches:
@@ -705,7 +516,6 @@ class EmpireDataRouter:
                 return pd.DataFrame([m.to_dataframe_row() for m in matches])
             else:
                 self._log("API-SPORTS", "EMPTY", "No upcoming soccer matches")
-        
         elif sport_type in ["NBA", "NFL", "MLB", "NHL"]:
             matches = self.my_sports_feeds.get_upcoming_matches(sport_type)
             if matches:
@@ -713,7 +523,6 @@ class EmpireDataRouter:
                 return pd.DataFrame([m.to_dataframe_row() for m in matches])
             else:
                 self._log("MySportsFeeds", "EMPTY", f"No upcoming {sport_type} matches")
-        
         elif sport_type in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf"]:
             matches = self.the_sports_db.get_upcoming_matches(sport_type)
             if matches:
@@ -721,38 +530,32 @@ class EmpireDataRouter:
                 return pd.DataFrame([m.to_dataframe_row() for m in matches])
             else:
                 self._log("TheSportsDB", "EMPTY", f"No upcoming {sport_type} events")
-        
         return pd.DataFrame()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# DASHBOARD DATA LAYER
+# DASHBOARD DATA LAYER - FIXED INITIALIZATION
 # ════════════════════════════════════════════════════════════════════════════════
 
 class EmpireDashboardData:
     def __init__(self):
-        try:
-            self.router = EmpireDataRouter()
-            self.is_live = True
-            logger.info("EmpireDashboardData initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize: {e}")
-            self.router = None
-            self.is_live = False
+        # NO try-except - let errors show
+        self.router = EmpireDataRouter()
+        self.is_live = True
 
     def get_connection_log_df(self) -> pd.DataFrame:
-        return self.router.get_connection_log_df() if self.router else pd.DataFrame()
+        return self.router.get_connection_log_df()
 
     def get_all_leagues(self, sport_type: str) -> List[Dict]:
-        return self.router.get_all_leagues(sport_type) if self.router else []
+        return self.router.get_all_leagues(sport_type)
 
     def get_live_matches_df(self, sport_type: str, league_id: str = None) -> pd.DataFrame:
-        return self.router.get_live_matches(sport_type, league_id) if self.router else pd.DataFrame()
+        return self.router.get_live_matches(sport_type, league_id)
 
     def get_upcoming_matches_df(self, sport_type: str) -> pd.DataFrame:
-        return self.router.get_upcoming_matches(sport_type) if self.router else pd.DataFrame()
+        return self.router.get_upcoming_matches(sport_type)
 
-    # Stub methods for compatibility with app.py
+    # Stub methods for compatibility
     def get_match_prediction(self, match_id: str): return None
     def get_match_details(self, match_id: str): return {"found": False}
     def get_team_form(self, team_name: str, match_id: str): return None
