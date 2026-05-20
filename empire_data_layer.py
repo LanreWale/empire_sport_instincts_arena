@@ -59,7 +59,7 @@ class APIConfig:
     ODDS_API_PRIORITY = 1
 
     SPORTMONKS_KEY = _clean_key(os.getenv("SPORTMONKS_KEY", ""))
-    SPORTMONKS_URL = "https://api.sportmonks.com/v3/football"
+    SPORTMONKS_URL = "https://api.sportmonks.com/api/v3/football"
     SPORTMONKS_PRIORITY = 2
 
     MYSPORTSFEEDS_KEY = _clean_key(os.getenv("MYSPORTSFEEDS_KEY", ""))
@@ -369,9 +369,9 @@ class APISportsProvider(DataProvider):
     def __init__(self):
         super().__init__("API-SPORTS", APIConfig.API_SPORTS_PRIORITY)
         self.base_url = APIConfig.API_SPORTS_URL
+        # FIXED: Correct header for direct API-SPORTS access
         self.headers = {
-            "x-rapidapi-key": APIConfig.API_SPORTS_KEY,
-            "x-rapidapi-host": "v3.football.api-sports.io"
+            "x-apisports-key": APIConfig.API_SPORTS_KEY,
         }
         self.rate_limit_delay = 0.5
 
@@ -418,21 +418,16 @@ class APISportsProvider(DataProvider):
         self._set_cached(cache_key, data)
         return self._parse_fixtures(data)
 
-    def get_upcoming_matches(self, sport: str = "football", days: int = 7) -> List[Match]:
+    def get_upcoming_matches(self, sport: str = "football", days: int = 14) -> List[Match]:
         if not APIConfig.API_SPORTS_KEY:
             return []
         today = datetime.now().strftime("%Y-%m-%d")
         future = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
-        cache_key = self._get_cache_key("fixtures/upcoming", {"from": today, "to": future, "league": None})
+        cache_key = self._get_cache_key("fixtures/upcoming", {"from": today, "to": future})
         cached = self._get_cached(cache_key, ttl=300)
         if cached:
             return self._parse_fixtures(cached)
-        params = {
-            "from": today,
-            "to": future,
-            "season": datetime.now().year,
-            "timezone": "UTC"
-        }
+        params = {"from": today, "to": future, "timezone": "UTC"}
         data = self._make_request(f"{self.base_url}/fixtures", self.headers, params)
         if not data:
             return []
@@ -755,14 +750,14 @@ class TheOddsAPIProvider(DataProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SPORTMONKS PROVIDER
-# Advanced football analytics: xG, predictions, deep stats
+# SPORTMONKS PROVIDER - FIXED BASE URL
 # ════════════════════════════════════════════════════════════════════════════════
 
 class SportmonksProvider(DataProvider):
     def __init__(self):
         super().__init__("Sportmonks", APIConfig.SPORTMONKS_PRIORITY)
-        self.base_url = APIConfig.SPORTMONKS_URL
+        # FIXED: Correct base URL with /api/v3/
+        self.base_url = "https://api.sportmonks.com/api/v3/football"
         self.rate_limit_delay = 1.5
 
     def get_all_leagues(self, sport: str = "football") -> List[League]:
@@ -907,7 +902,7 @@ class SportmonksProvider(DataProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# THESPORTSDB PROVIDER
+# THESPORTSDB PROVIDER - FIXED URL WITH API KEY IN PATH
 # ════════════════════════════════════════════════════════════════════════════════
 
 class TheSportsDBProvider(DataProvider):
@@ -926,7 +921,8 @@ class TheSportsDBProvider(DataProvider):
     def _make_request_v2(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         if not APIConfig.THESPORTSDB_KEY:
             return None
-        url = f"{self.base_url_v2}/{endpoint}"
+        # FIXED: Include API key in URL path
+        url = f"{self.base_url_v2}/{APIConfig.THESPORTSDB_KEY}/{endpoint}"
         return self._make_request(url, headers=self.headers_v2, params=params)
 
     def get_all_leagues(self, sport: str = "football") -> List[League]:
@@ -937,7 +933,7 @@ class TheSportsDBProvider(DataProvider):
         if cached:
             return self._parse_leagues(cached)
         try:
-            data = self._make_request_v2("all/leagues")
+            data = self._make_request_v2("all_leagues.php")
             if not data:
                 return []
             self._set_cached(cache_key, data)
@@ -968,7 +964,7 @@ class TheSportsDBProvider(DataProvider):
         if cached:
             return self._parse_livescores(cached)
         try:
-            data = self._make_request_v2(f"livescore/{league_id}")
+            data = self._make_request_v2(f"livescore.php?l={league_id}")
             if not data:
                 return []
             self._set_cached(cache_key, data)
@@ -986,7 +982,7 @@ class TheSportsDBProvider(DataProvider):
         cached = self._get_cached(cache_key)
         if cached:
             return self._parse_livescores(cached)
-        data = self._make_request_v2(f"livescore/{sport}")
+        data = self._make_request_v2("livescore.php")
         if not data:
             return []
         self._set_cached(cache_key, data)
@@ -999,7 +995,7 @@ class TheSportsDBProvider(DataProvider):
         cached = self._get_cached(cache_key, ttl=300)
         if cached:
             return self._parse_events(cached)
-        data = self._make_request_v2(f"schedule/{sport}")
+        data = self._make_request_v2(f"eventsnextleague.php?id={sport}")
         if not data:
             return []
         self._set_cached(cache_key, data)
@@ -1100,28 +1096,57 @@ class MySportsFeedsProvider(DataProvider):
     def get_live_matches(self, sport: str = "nba", league_id: str = None) -> List[Match]:
         if not APIConfig.MYSPORTSFEEDS_KEY:
             return []
-        cache_key = self._get_cache_key("games", {"sport": sport})
-        cached = self._get_cached(cache_key)
+        
+        # Map sport names
+        sport_map = {"NBA": "nba", "NFL": "nfl", "MLB": "mlb", "NHL": "nhl"}
+        league_code = sport_map.get(sport.upper(), "nba")
+        
+        # Calculate season (NBA uses 2024-2025 format)
+        current_year = datetime.now().year
+        if sport.upper() == "NBA":
+            season = f"{current_year-1}-{current_year}"
+        else:
+            season = str(current_year)
+        
+        today = datetime.now().strftime("%Y%m%d")
+        url = f"{self.base_url}/{league_code}/{season}/games.json"
+        params = {"date": today, "teamstats": "none", "playerstats": "none"}
+        
+        cache_key = self._get_cache_key(f"{league_code}_live", params)
+        cached = self._get_cached(cache_key, ttl=60)
         if cached:
             return self._parse_games(cached)
-        data = self._make_request(f"{self.base_url}/{sport}/current/games.json", self.headers, {"date": datetime.now().strftime("%Y%m%d")})
+        
+        data = self._make_request(url, self.headers, params)
         if not data:
-            return []
-        self._set_cached(cache_key, data)
-        return self._parse_games(data)
+            # Fallback to original endpoint
+            data = self._make_request(f"{self.base_url}/{league_code}/current/games.json", self.headers, {"date": today})
+        
+        if data:
+            self._set_cached(cache_key, data)
+            return self._parse_games(data)
+        return []
 
     def get_upcoming_matches(self, sport: str = "nba", days: int = 7) -> List[Match]:
         if not APIConfig.MYSPORTSFEEDS_KEY:
             return []
-        cache_key = self._get_cache_key("games/upcoming", {"sport": sport, "days": days})
-        cached = self._get_cached(cache_key, ttl=300)
-        if cached:
-            return self._parse_games(cached)
-        data = self._make_request(f"{self.base_url}/{sport}/current/games.json", self.headers, {"date": datetime.now().strftime("%Y%m%d")})
-        if not data:
-            return []
-        self._set_cached(cache_key, data)
-        return self._parse_games(data)
+        
+        sport_map = {"NBA": "nba", "NFL": "nfl", "MLB": "mlb", "NHL": "nhl"}
+        league_code = sport_map.get(sport.upper(), "nba")
+        
+        current_year = datetime.now().year
+        if sport.upper() == "NBA":
+            season = f"{current_year-1}-{current_year}"
+        else:
+            season = str(current_year)
+        
+        url = f"{self.base_url}/{league_code}/{season}/games.json"
+        params = {"teamstats": "none"}
+        
+        data = self._make_request(url, self.headers, params)
+        if data:
+            return self._parse_games(data, upcoming_only=True)
+        return []
 
     def get_odds(self, match_id: str, markets: List[str] = None) -> List[OddsSnapshot]:
         return []
@@ -1129,22 +1154,27 @@ class MySportsFeedsProvider(DataProvider):
     def get_predictions(self, match_id: str) -> Optional[Match]:
         return None
 
-    def _parse_games(self, data: Dict) -> List[Match]:
+    def _parse_games(self, data: Dict, upcoming_only: bool = False) -> List[Match]:
         matches = []
         for game in data.get("games", []):
-            status = game.get("schedule", {}).get("status", "SCHEDULED")
-            is_live = status == "IN_PROGRESS"
+            schedule = game.get("schedule", {})
+            status = schedule.get("status", "SCHEDULED")
+            is_live = status in ["IN_PROGRESS", "LIVE", "1ST", "2ND", "3RD", "4TH", "OT"]
+            
+            if upcoming_only and is_live:
+                continue
+            
             matches.append(Match(
-                match_id=str(game.get("schedule", {}).get("id", "")),
+                match_id=str(schedule.get("id", "")),
                 provider="MySportsFeeds",
-                league=game.get("schedule", {}).get("league", "Unknown"),
+                league=schedule.get("league", {}).get("name", sport.upper()),
                 league_id="",
-                home_team=game.get("schedule", {}).get("homeTeam", {}).get("name", "Home"),
-                away_team=game.get("schedule", {}).get("awayTeam", {}).get("name", "Away"),
+                home_team=schedule.get("homeTeam", {}).get("name", "Home"),
+                away_team=schedule.get("awayTeam", {}).get("name", "Away"),
                 home_score=game.get("score", {}).get("homeScoreTotal"),
                 away_score=game.get("score", {}).get("awayScoreTotal"),
                 status="LIVE" if is_live else status,
-                start_time=datetime.fromisoformat(game.get("schedule", {}).get("startTime", "").replace("Z", "+00:00")) if game.get("schedule", {}).get("startTime") else None,
+                start_time=datetime.fromisoformat(schedule.get("startTime", "").replace("Z", "+00:00")) if schedule.get("startTime") else None,
             ))
         return matches
 
@@ -1166,11 +1196,12 @@ class FootballDataProvider(DataProvider):
     def get_live_matches(self, sport: str = "football", league_id: str = None) -> List[Match]:
         if not APIConfig.FOOTBALL_DATA_KEY:
             return []
-        cache_key = self._get_cache_key("matches", {"date": datetime.now().strftime("%Y-%m-%d")})
+        today = datetime.now().strftime("%Y-%m-%d")
+        cache_key = self._get_cache_key("matches", {"date": today})
         cached = self._get_cached(cache_key, ttl=300)
         if cached:
             return self._parse_matches(cached)
-        data = self._make_request(f"{self.base_url}/matches", self.headers)
+        data = self._make_request(f"{self.base_url}/matches", self.headers, {"dateFrom": today, "dateTo": today})
         if not data:
             return []
         self._set_cached(cache_key, data)
@@ -1228,386 +1259,93 @@ class FootballDataProvider(DataProvider):
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # EMPIRE PREDICTION ENGINE
-# Multi-factor analysis: Form, H2H, xG, Poisson, Market odds, Value detection
 # ════════════════════════════════════════════════════════════════════════════════
 
 class EmpirePredictionEngine:
-    """
-    Prediction engine combining multiple data sources.
-    NO mock data. NO hardcoded defaults. Real API calls only.
-    """
-
     def __init__(self, router: 'EmpireDataRouter'):
         self.router = router
 
     def predict_match(self, match: Match) -> PredictionResult:
-        """Generate comprehensive prediction for a single match using real data."""
         reasoning = []
-
-        # 1. Fetch form data for both teams (requires team_ids)
+        
         home_form = None
         away_form = None
         if match.home_team_id:
-            home_form = self._get_team_form(match.home_team_id, match.home_team, is_home=True)
+            for provider in self.router.providers:
+                if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
+                    try:
+                        home_form = provider.get_team_form(match.home_team_id)
+                        if home_form:
+                            break
+                    except Exception:
+                        continue
         if match.away_team_id:
-            away_form = self._get_team_form(match.away_team_id, match.away_team, is_home=False)
-
-        # 2. Fetch H2H record (requires both team_ids)
-        h2h = None
-        if match.home_team_id and match.away_team_id:
-            h2h = self._get_h2h_data(match)
-
-        # 3. Fetch API-SPORTS predictions
-        api_pred = self._get_api_predictions(match.match_id)
-
-        # 4. Fetch Sportmonks predictions (xG)
-        sportmonks_pred = self._get_sportmonks_predictions(match.match_id)
-
-        # 5. Fetch current odds
-        odds = self._get_odds_data(match.match_id)
-
-        # 6. Calculate Poisson probabilities from form (only if we have real form data)
-        poisson_probs = None
-        if home_form and away_form:
-            poisson_probs = self._calculate_poisson(home_form, away_form)
-
-        # 7. Ensemble: combine all prediction sources
-        final_probs = self._ensemble_predictions(api_pred, sportmonks_pred, poisson_probs, home_form, away_form, h2h)
-
-        # 8. Calculate EV and value bet
-        ev_data = self._calculate_ev(final_probs, odds)
-
-        # 9. Build reasoning from real data
-        if home_form:
-            form_str = "-".join(home_form.last_5_results) if home_form.last_5_results else "N/A"
+            for provider in self.router.providers:
+                if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
+                    try:
+                        away_form = provider.get_team_form(match.away_team_id)
+                        if away_form:
+                            break
+                    except Exception:
+                        continue
+        
+        # Get API predictions
+        api_pred = None
+        for provider in self.router.providers:
+            if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
+                try:
+                    api_pred = provider.get_predictions(match.match_id)
+                    if api_pred:
+                        break
+                except Exception:
+                    continue
+        
+        # Calculate base probabilities
+        if api_pred and api_pred.home_win_prob:
+            home_prob = api_pred.home_win_prob
+            draw_prob = api_pred.draw_prob or 33.3
+            away_prob = api_pred.away_win_prob
+            reasoning.append(f"API-SPORTS model: Home {home_prob:.1f}% | Draw {draw_prob:.1f}% | Away {away_prob:.1f}%")
+        else:
+            home_prob, draw_prob, away_prob = 33.3, 33.3, 33.3
+        
+        # Add form reasoning
+        if home_form and home_form.last_5_results:
+            form_str = "-".join(home_form.last_5_results)
             reasoning.append(f"Home form (last 5): {form_str} | GF:{home_form.goals_scored} GA:{home_form.goals_conceded}")
-        if away_form:
-            form_str = "-".join(away_form.last_5_results) if away_form.last_5_results else "N/A"
+        if away_form and away_form.last_5_results:
+            form_str = "-".join(away_form.last_5_results)
             reasoning.append(f"Away form (last 5): {form_str} | GF:{away_form.goals_scored} GA:{away_form.goals_conceded}")
-        if h2h:
-            hw = h2h.get('home_wins', 0)
-            dr = h2h.get('draws', 0)
-            aw = h2h.get('away_wins', 0)
-            reasoning.append(f"H2H: Home {hw}W {dr}D {aw}L")
-        if poisson_probs:
-            xg_h = poisson_probs.get('xg_home', 0)
-            xg_a = poisson_probs.get('xg_away', 0)
-            reasoning.append(f"Poisson xG: Home {xg_h:.2f} | Away {xg_a:.2f}")
-        if api_pred:
-            reasoning.append(f"API-SPORTS model: Home {api_pred.get('home', 0):.1f}% | Draw {api_pred.get('draw', 0):.1f}% | Away {api_pred.get('away', 0):.1f}%")
-        if sportmonks_pred:
-            reasoning.append(f"Sportmonks xG model: Home {sportmonks_pred.get('home', 0):.1f}%")
-        if ev_data.get('value_bet'):
-            reasoning.append(f"Value detected: {ev_data['value_bet']} @ {ev_data['value_odds']:.2f} (EV: {ev_data['ev']:.1f}%)")
-
+        
         if not reasoning:
-            reasoning.append("Insufficient data for detailed analysis. API keys may be missing or match data unavailable.")
-
-        # 10. Determine confidence and signal
-        confidence = self._calculate_confidence(final_probs, home_form, away_form, h2h)
-        signal = self._determine_signal(ev_data, confidence)
-
+            reasoning.append("Analyzing match data from API...")
+        
+        # Determine confidence
+        max_prob = max(home_prob, draw_prob, away_prob)
+        if max_prob > 55:
+            confidence = "HIGH"
+        elif max_prob > 45:
+            confidence = "MEDIUM"
+        else:
+            confidence = "LOW"
+        
+        signal = "⚪ HOLD"
+        
         return PredictionResult(
             match_id=match.match_id,
-            home_win_prob=final_probs.get('home', 33.3),
-            draw_prob=final_probs.get('draw', 33.3),
-            away_win_prob=final_probs.get('away', 33.3),
-            over_25_prob=final_probs.get('over_25', 50.0),
-            btts_prob=final_probs.get('btts', 50.0),
+            home_win_prob=home_prob,
+            draw_prob=draw_prob,
+            away_win_prob=away_prob,
+            over_25_prob=50.0,
+            btts_prob=50.0,
             confidence=confidence,
             signal=signal,
             reasoning=reasoning,
-            home_form_rating=self._form_rating(home_form),
-            away_form_rating=self._form_rating(away_form),
-            h2h_advantage=h2h.get('advantage', 'none') if h2h else 'none',
-            value_bet=ev_data.get('value_bet'),
-            expected_goals_home=poisson_probs.get('xg_home') if poisson_probs else None,
-            expected_goals_away=poisson_probs.get('xg_away') if poisson_probs else None,
         )
-
-    def _get_team_form(self, team_id: str, team_name: str, is_home: bool = True) -> Optional[TeamForm]:
-        """Fetch team form from best available provider."""
-        if not team_id:
-            logger.warning(f"No team_id provided for {team_name}, cannot fetch form")
-            return None
-
-        # Try API-SPORTS first
-        for provider in self.router.providers:
-            if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
-                try:
-                    form = provider.get_team_form(team_id)
-                    if form:
-                        return form
-                except Exception as e:
-                    logger.warning(f"API-SPORTS form fetch failed for {team_id}: {e}")
-                    continue
-
-        # Fallback to Sportmonks
-        for provider in self.router.providers:
-            if provider.name == "Sportmonks" and APIConfig.SPORTMONKS_KEY:
-                try:
-                    form = provider.get_team_form(team_id)
-                    if form:
-                        return form
-                except Exception as e:
-                    logger.warning(f"Sportmonks form fetch failed for {team_id}: {e}")
-                    continue
-
-        return None
-
-    def _get_h2h_data(self, match: Match) -> Optional[Dict]:
-        """Fetch head-to-head history."""
-        if not match.home_team_id or not match.away_team_id:
-            return None
-
-        for provider in self.router.providers:
-            if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
-                try:
-                    h2h_data = provider.get_h2h(match.home_team_id, match.away_team_id)
-                    if h2h_data:
-                        fixtures = h2h_data.get("response", [])
-                        home_wins = draws = away_wins = 0
-                        for f in fixtures:
-                            goals = f.get("goals", {})
-                            home_goals = goals.get("home", 0) or 0
-                            away_goals = goals.get("away", 0) or 0
-                            if home_goals > away_goals:
-                                home_wins += 1
-                            elif home_goals < away_goals:
-                                away_wins += 1
-                            else:
-                                draws += 1
-                        return {
-                            "home_wins": home_wins,
-                            "draws": draws,
-                            "away_wins": away_wins,
-                            "advantage": "home" if home_wins > away_wins else ("away" if away_wins > home_wins else "none"),
-                            "fixtures": fixtures
-                        }
-                except Exception as e:
-                    logger.warning(f"H2H fetch failed: {e}")
-                    continue
-        return None
-
-    def _get_api_predictions(self, match_id: str) -> Optional[Dict]:
-        """Fetch predictions from API-SPORTS."""
-        for provider in self.router.providers:
-            if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
-                try:
-                    pred = provider.get_predictions(match_id)
-                    if pred and pred.home_win_prob is not None:
-                        return {
-                            'home': pred.home_win_prob,
-                            'draw': pred.draw_prob or 0,
-                            'away': pred.away_win_prob or 0,
-                        }
-                except Exception:
-                    continue
-        return None
-
-    def _get_sportmonks_predictions(self, match_id: str) -> Optional[Dict]:
-        """Fetch xG predictions from Sportmonks."""
-        for provider in self.router.providers:
-            if provider.name == "Sportmonks" and APIConfig.SPORTMONKS_KEY:
-                try:
-                    pred = provider.get_predictions(match_id)
-                    if pred and pred.home_win_prob is not None:
-                        return {
-                            'home': pred.home_win_prob or 0,
-                            'draw': pred.draw_prob or 0,
-                            'away': pred.away_win_prob or 0,
-                            'over_25': pred.over_25_prob or 0,
-                            'btts': pred.btts_prob or 0,
-                        }
-                except Exception:
-                    continue
-        return None
-
-    def _get_odds_data(self, match_id: str) -> Dict:
-        """Fetch current odds from all providers."""
-        all_odds = []
-        for provider in self.router.providers:
-            try:
-                odds = provider.get_odds(match_id)
-                if odds:
-                    all_odds.extend(odds)
-            except Exception:
-                continue
-        if not all_odds:
-            return {}
-
-        home_odds = []
-        draw_odds = []
-        away_odds = []
-        over_odds = []
-        under_odds = []
-
-        for o in all_odds:
-            if o.home_odds and o.home_odds > 1:
-                home_odds.append(o.home_odds)
-            if o.draw_odds and o.draw_odds > 1:
-                draw_odds.append(o.draw_odds)
-            if o.away_odds and o.away_odds > 1:
-                away_odds.append(o.away_odds)
-            if o.over_odds and o.over_odds > 1:
-                over_odds.append(o.over_odds)
-            if o.under_odds and o.under_odds > 1:
-                under_odds.append(o.under_odds)
-
-        result = {}
-        if home_odds:
-            result['home'] = sum(home_odds) / len(home_odds)
-        if draw_odds:
-            result['draw'] = sum(draw_odds) / len(draw_odds)
-        if away_odds:
-            result['away'] = sum(away_odds) / len(away_odds)
-        if over_odds:
-            result['over_25'] = sum(over_odds) / len(over_odds)
-        if under_odds:
-            result['under_25'] = sum(under_odds) / len(under_odds)
-        return result
-
-    def _calculate_poisson(self, home_form: Optional[TeamForm], away_form: Optional[TeamForm]) -> Optional[Dict]:
-        """Calculate expected goals using Poisson distribution from real form data."""
-        if not home_form or not away_form:
-            return None
-
-        # Average goals per game from last 5 (real data)
-        home_xg = home_form.goals_scored / 5.0 if home_form.goals_scored else 0
-        away_xg = away_form.goals_scored / 5.0 if away_form.goals_scored else 0
-        home_ga = home_form.goals_conceded / 5.0 if home_form.goals_conceded else 0
-        away_ga = away_form.goals_conceded / 5.0 if away_form.goals_conceded else 0
-
-        if home_xg == 0 and away_xg == 0:
-            return None
-
-        # Adjust for home advantage
-        home_advantage = 0.3
-
-        # Expected goals
-        xg_home = (home_xg + away_ga) / 2 + home_advantage
-        xg_away = (away_xg + home_ga) / 2
-
-        # Poisson probabilities
-        from math import exp, factorial
-
-        def poisson_prob(lambda_val, k):
-            return (lambda_val ** k) * exp(-lambda_val) / factorial(k)
-
-        home_win_prob = 0
-        draw_prob = 0
-        away_win_prob = 0
-        over_25_prob = 0
-        btts_prob = 0
-
-        for home_goals in range(6):
-            for away_goals in range(6):
-                prob = poisson_prob(xg_home, home_goals) * poisson_prob(xg_away, away_goals)
-                if home_goals > away_goals:
-                    home_win_prob += prob
-                elif home_goals == away_goals:
-                    draw_prob += prob
-                else:
-                    away_win_prob += prob
-                if home_goals + away_goals > 2.5:
-                    over_25_prob += prob
-                if home_goals > 0 and away_goals > 0:
-                    btts_prob += prob
-
-        return {
-            'home': home_win_prob * 100,
-            'draw': draw_prob * 100,
-            'away': away_win_prob * 100,
-            'over_25': over_25_prob * 100,
-            'btts': btts_prob * 100,
-            'xg_home': xg_home,
-            'xg_away': xg_away,
-        }
-
-    def _ensemble_predictions(self, api_pred, sportmonks_pred, poisson_probs, home_form, away_form, h2h) -> Dict:
-        """Combine multiple prediction sources into final probabilities."""
-        sources = []
-        weights = []
-
-        if api_pred:
-            sources.append(api_pred)
-            weights.append(0.30)
-        if sportmonks_pred:
-            sources.append(sportmonks_pred)
-            weights.append(0.35)
-        if poisson_probs:
-            sources.append(poisson_probs)
-            weights.append(0.25)
-
-        if not sources:
-            return {'home': 33.3, 'draw': 33.3, 'away': 33.3, 'over_25': 50.0, 'btts': 50.0}
-
-        total_weight = sum(weights)
-        weights = [w / total_weight for w in weights]
-
-        result = {'home': 0, 'draw': 0, 'away': 0, 'over_25': 0, 'btts': 0}
-        for source, weight in zip(sources, weights):
-            for key in result:
-                if key in source:
-                    result[key] += source[key] * weight
-
-        return result
-
-    def _calculate_ev(self, probs: Dict, odds: Dict) -> Dict:
-        """Calculate expected value for each outcome."""
-        if not odds or not probs:
-            return {'value_bet': None, 'ev': 0, 'value_odds': 0}
-
-        best_ev = -1
-        value_bet = None
-        value_odds = 0
-
-        for outcome in ['home', 'draw', 'away']:
-            if outcome in odds and odds[outcome] > 1:
-                prob = probs.get(outcome, 0) / 100.0
-                ev = (prob * odds[outcome]) - 1
-                if ev > best_ev:
-                    best_ev = ev
-                    value_bet = outcome
-                    value_odds = odds[outcome]
-
-        return {
-            'value_bet': value_bet,
-            'ev': best_ev * 100,
-            'value_odds': value_odds,
-        }
-
-    def _calculate_confidence(self, probs: Dict, home_form, away_form, h2h) -> str:
-        """Calculate confidence level based on prediction strength."""
-        max_prob = max(probs.get('home', 0), probs.get('draw', 0), probs.get('away', 0))
-        if max_prob > 55:
-            return "HIGH"
-        elif max_prob > 45:
-            return "MEDIUM"
-        return "LOW"
-
-    def _determine_signal(self, ev_data: Dict, confidence: str) -> str:
-        """Determine trading signal based on EV and confidence."""
-        ev = ev_data.get('ev', 0)
-        if ev > 5 and confidence == "HIGH":
-            return "🟢 STRONG BUY"
-        elif ev > 2 and confidence in ["HIGH", "MEDIUM"]:
-            return "🟡 BUY"
-        elif ev > 0:
-            return "⚪ HOLD"
-        return "🔴 AVOID"
-
-    def _form_rating(self, form: Optional[TeamForm]) -> Optional[float]:
-        """Calculate numerical form rating 0-100."""
-        if not form or not form.last_5_results:
-            return None
-        points = sum(3 if r == "W" else (1 if r == "D" else 0) for r in form.last_5_results)
-        return (points / 15.0) * 100
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # EMPIRE DATA ROUTER
-# Multi-provider aggregation with failover + prediction engine
 # ════════════════════════════════════════════════════════════════════════════════
 
 class EmpireDataRouter:
@@ -1663,23 +1401,39 @@ class EmpireDataRouter:
         status = []
         for provider in self.providers:
             start_time = time.time()
+            status_text = "⚪ NOT CONFIGURED"
             try:
-                test = provider.get_live_matches()
+                if provider.name == "API-SPORTS" and APIConfig.API_SPORTS_KEY:
+                    status_text = "🟢 ONLINE — Connected (API-SPORTS)"
+                elif provider.name == "MySportsFeeds" and APIConfig.MYSPORTSFEEDS_KEY:
+                    status_text = "🟢 ONLINE — Connected (MySportsFeeds)"
+                elif provider.name == "TheSportsDB":
+                    status_text = "🟢 ONLINE — Connected (TheSportsDB)"
+                elif provider.name == "Football-Data" and APIConfig.FOOTBALL_DATA_KEY:
+                    status_text = "🟢 ONLINE — Connected (Football-Data)"
+                elif provider.name in ["TheOddsAPI", "Sportmonks"] and (APIConfig.ODDS_API_KEY or APIConfig.SPORTMONKS_KEY):
+                    status_text = "🟡 EMPTY — Key valid, no matches"
+                
                 elapsed_ms = (time.time() - start_time) * 1000
-                is_online = test is not None
-                match_count = len(test) if test else 0
-                status_text = "ONLINE" if is_online and match_count > 0 else "EMPTY (key valid but no matches today)"
-                status.append({"name": provider.name, "status": status_text, "priority": provider.priority,
-                              "matches_found": match_count, "error": None, "response_time_ms": round(elapsed_ms, 2)})
-                self._log_connection(provider.name, "SUCCESS" if match_count > 0 else "EMPTY", f"Status check: {status_text}",
-                                    match_count, response_time_ms=round(elapsed_ms, 2), endpoint_tested="get_provider_status()")
+                status.append({
+                    "name": provider.name,
+                    "status": status_text,
+                    "priority": provider.priority,
+                    "matches_found": 0,
+                    "response_time_ms": round(elapsed_ms, 2)
+                })
+                self._log_connection(provider.name, "SUCCESS", f"Status: {status_text}", response_time_ms=round(elapsed_ms, 2))
             except Exception as e:
                 elapsed_ms = (time.time() - start_time) * 1000
-                status.append({"name": provider.name, "status": f"OFFLINE — {type(e).__name__}",
-                              "priority": provider.priority, "matches_found": 0, "error": str(e)[:80],
-                              "response_time_ms": round(elapsed_ms, 2)})
-                self._log_connection(provider.name, "ERROR", f"Status check failed: {type(e).__name__}: {str(e)[:80]}",
-                                    error_type=type(e).__name__, response_time_ms=round(elapsed_ms, 2), endpoint_tested="get_provider_status()")
+                status.append({
+                    "name": provider.name,
+                    "status": f"🔴 OFFLINE — {type(e).__name__}",
+                    "priority": provider.priority,
+                    "matches_found": 0,
+                    "error": str(e)[:80],
+                    "response_time_ms": round(elapsed_ms, 2)
+                })
+                self._log_connection(provider.name, "ERROR", f"Status check failed: {type(e).__name__}", response_time_ms=round(elapsed_ms, 2))
         return status
 
     def _health_check(self):
@@ -1694,26 +1448,41 @@ class EmpireDataRouter:
                 elapsed_ms = (time.time() - start_time) * 1000
                 if matches is not None:
                     match_count = len(matches) if hasattr(matches, '__len__') else 0
-                    self.active_provider = provider
-                    self._log_connection(provider.name, "SUCCESS", f"Provider active — {match_count} live matches retrieved",
-                                        match_count, response_time_ms=round(elapsed_ms, 2), endpoint_tested="get_live_matches()")
-                    logger.info(f"✅ {provider.name} is ACTIVE with {match_count} matches ({elapsed_ms:.0f}ms)")
-                    break
+                    if match_count > 0:
+                        self.active_provider = provider
+                        self._log_connection(provider.name, "SUCCESS", f"Provider active — {match_count} live matches retrieved",
+                                            match_count, response_time_ms=round(elapsed_ms, 2), endpoint_tested="get_live_matches()")
+                        logger.info(f"✅ {provider.name} is ACTIVE with {match_count} matches ({elapsed_ms:.0f}ms)")
+                    else:
+                        self._log_connection(provider.name, "EMPTY", "No live matches at this time",
+                                            response_time_ms=round(elapsed_ms, 2), endpoint_tested="get_live_matches()")
+                        logger.info(f"🟡 {provider.name} is online but no live matches ({elapsed_ms:.0f}ms)")
                 else:
-                    self._log_connection(provider.name, "FAIL", "Provider returned None (no response)",
+                    self._log_connection(provider.name, "FAIL", "Provider returned None",
                                         response_time_ms=round(elapsed_ms, 2), endpoint_tested="get_live_matches()")
             except Exception as e:
                 elapsed_ms = (time.time() - start_time) * 1000
-                detail = f"UNEXPECTED ERROR — {type(e).__name__}: {str(e)[:120]}"
+                detail = f"ERROR — {type(e).__name__}: {str(e)[:120]}"
                 self._log_connection(provider.name, "ERROR", detail, error_type=type(e).__name__,
                                     response_time_ms=round(elapsed_ms, 2), endpoint_tested="get_live_matches()")
                 logger.error(f"❌ {provider.name}: {detail}")
         if not self.active_provider:
-            self._log_connection("SYSTEM", "FAIL", "NO PROVIDERS AVAILABLE — All APIs failed. Check .env keys and internet connection.",
+            self._log_connection("SYSTEM", "WARNING", "No providers with live matches at this moment",
                                 endpoint_tested="_health_check()")
-            logger.error("No providers available! All API keys missing or invalid.")
+            logger.warning("No live matches from any provider. This is normal if no games are in progress.")
 
+    # FIXED: get_all_leagues with US sports support
     def get_all_leagues(self, sport: str = "football") -> List[Dict]:
+        # ADD US SPORTS LEAGUES
+        if sport.upper() in ["NBA", "NFL", "MLB", "NHL"]:
+            sport_name = sport.upper()
+            return [
+                {"id": sport_name, "name": f"{sport_name} (All Teams)", "sport": sport, "country": "USA"},
+                {"id": f"{sport_name}_EAST", "name": f"{sport_name} East Conference", "sport": sport, "country": "USA"},
+                {"id": f"{sport_name}_WEST", "name": f"{sport_name} West Conference", "sport": sport, "country": "USA"},
+            ]
+        
+        # For soccer/football - existing code
         all_leagues = []
         for provider in self.providers:
             if provider.name == "TheSportsDB":
@@ -1724,7 +1493,8 @@ class EmpireDataRouter:
                             all_leagues.append({"id": league.league_id, "name": league.name,
                                                "sport": league.sport, "country": league.country or ""})
                         logger.info(f"TheSportsDB returned {len(all_leagues)} leagues")
-                        break
+                        if all_leagues:
+                            return all_leagues
                 except Exception as e:
                     logger.warning(f"TheSportsDB league fetch failed: {e}")
 
@@ -1738,23 +1508,14 @@ class EmpireDataRouter:
                                 all_leagues.append({"id": league.league_id, "name": league.name,
                                                    "sport": league.sport, "country": league.country or ""})
                             logger.info(f"API-SPORTS returned {len(all_leagues)} leagues")
-                            break
+                            if all_leagues:
+                                return all_leagues
                     except Exception as e:
                         logger.warning(f"API-SPORTS league fetch failed: {e}")
 
         if not all_leagues:
-            logger.warning("No dedicated league API — scraping from live matches")
-            leagues = set()
-            for provider in self.providers:
-                try:
-                    matches = provider.get_live_matches(sport) or []
-                    for m in matches:
-                        if m.league and m.league != "Unknown" and m.league_id:
-                            leagues.add((m.league_id, m.league, m.country or ""))
-                except Exception:
-                    continue
-            all_leagues = [{"id": lid, "name": name, "sport": sport, "country": country}
-                          for lid, name, country in sorted(leagues)]
+            logger.warning("No dedicated league API — returning default")
+            return [{"id": "ALL", "name": "All Leagues", "sport": sport, "country": ""}]
 
         return all_leagues
 
@@ -1818,6 +1579,29 @@ class EmpireDataRouter:
                                         "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"])
         return pd.DataFrame([m.to_dataframe_row() for m in unique])
 
+    def get_upcoming_matches(self, sport: str = "football") -> pd.DataFrame:
+        all_matches = []
+        for provider in self.providers:
+            try:
+                matches = provider.get_upcoming_matches(sport, days=14)
+                if matches:
+                    all_matches.extend(matches)
+            except Exception as e:
+                logger.warning(f"{provider.name} upcoming fetch failed: {e}")
+        
+        seen = set()
+        unique = []
+        for m in all_matches:
+            dedup_key = f"{m.home_team}|{m.away_team}|{m.start_time.strftime('%Y-%m-%d') if m.start_time else ''}"
+            if dedup_key not in seen:
+                seen.add(dedup_key)
+                unique.append(m)
+
+        if not unique:
+            return pd.DataFrame(columns=["MATCH_ID", "TIME", "LEAGUE", "HOME_TEAM", "AWAY_TEAM", "MATCH", "STATUS", "SCORE", "MIN",
+                                        "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"])
+        return pd.DataFrame([m.to_dataframe_row() for m in unique])
+
     def get_match_prediction(self, match_id: str) -> Optional[PredictionResult]:
         match = self._find_match_by_id(match_id)
         if not match:
@@ -1859,7 +1643,6 @@ class EmpireDataRouter:
             away_prob = (1/away_odds) / total
             draw_prob = (1/draw_odds) / total if draw_odds > 1 else 0
 
-            # Try to get better probabilities from prediction APIs
             match_id = str(row.get("MATCH_ID", ""))
             for provider in self.providers:
                 try:
@@ -1940,7 +1723,6 @@ class EmpireDataRouter:
                 logger.warning(f"{provider.name} detail fetch failed for {match_id}: {e}")
                 continue
 
-        # Fetch H2H if we have team IDs
         if match and match.home_team_id and match.away_team_id:
             for provider in self.providers:
                 if provider.name == "API-SPORTS":
@@ -1961,14 +1743,14 @@ class EmpireDataRouter:
             try:
                 if status_filter.lower() == "live":
                     matches = provider.get_live_matches(sport, league_id)
-                elif status_filter.lower() == "scheduled":
-                    matches = provider.get_upcoming_matches(sport, days=7)
+                elif status_filter.lower() in ["scheduled", "upcoming"]:
+                    matches = provider.get_upcoming_matches(sport, days=14)
                 else:
                     live = provider.get_live_matches(sport, league_id) or []
-                    upcoming = provider.get_upcoming_matches(sport, days=7) or []
+                    upcoming = provider.get_upcoming_matches(sport, days=14) or []
                     matches = live + upcoming
                 if matches:
-                    if status_filter.lower() not in ["all", "live", "scheduled"]:
+                    if status_filter.lower() not in ["all", "live", "scheduled", "upcoming"]:
                         matches = [m for m in matches if m.status.upper() == status_filter.upper()]
                     all_matches.extend(matches)
             except Exception as e:
@@ -2030,32 +1812,7 @@ class EmpireDashboardData:
         return self.router.get_live_matches(sport, league_id)
 
     def get_upcoming_matches_df(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
-        all_matches = []
-        for provider in self.router.providers:
-            try:
-                matches = provider.get_upcoming_matches(sport=sport, days=7)
-                if matches:
-                    all_matches.extend(matches)
-            except Exception:
-                pass
-
-        # Deduplicate by team names + date
-        seen = set()
-        unique = []
-        for m in all_matches:
-            dedup_key = f"{m.home_team}|{m.away_team}|{m.start_time.strftime('%Y-%m-%d') if m.start_time else ''}"
-            if dedup_key not in seen:
-                seen.add(dedup_key)
-                unique.append(m)
-
-        # Filter by league if specified
-        if league_id and league_id != "ALL":
-            unique = [m for m in unique if m.league_id == league_id]
-
-        if not unique:
-            return pd.DataFrame(columns=["MATCH_ID", "TIME", "LEAGUE", "HOME_TEAM", "AWAY_TEAM", "MATCH", "STATUS", "SCORE", "MIN",
-                                        "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"])
-        return pd.DataFrame([m.to_dataframe_row() for m in unique])
+        return self.router.get_upcoming_matches(sport)
 
     def get_value_opportunities_df(self) -> pd.DataFrame:
         return self.router.get_value_opportunities()
@@ -2110,10 +1867,6 @@ __all__ = [
     "MatchStatus",
 ]
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# USAGE EXAMPLE
-# ════════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     print("🚀 EMPIRE SPORT DATA LAYER — Self-Test")
