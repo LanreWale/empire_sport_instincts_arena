@@ -553,7 +553,9 @@ def render_sidebar():
                     return "color: #888;"
 
                 styled_log = log_df.style.map(color_status, subset=["STATUS"])
+                st.markdown('<div style="background-color: #0d0d14; border-radius: 10px; padding: 10px; border: 1px solid #2a2a3e;">', unsafe_allow_html=True)
                 st.dataframe(styled_log, use_container_width=True, hide_index=True, height=250)
+                st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.info("No connection attempts yet.")
         except Exception as e:
@@ -815,7 +817,7 @@ def render_match_table(matches_df, selected_view, key_prefix, selected_league_id
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMPREHENSIVE MATCH ANALYSIS PANEL
+# COMPREHENSIVE MATCH ANALYSIS PANEL - COMPLETE 7-TAB VERSION
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_analysis_panel():
     """Render detailed analysis when a match is selected from the sidebar."""
@@ -836,222 +838,234 @@ def render_match_analysis_panel():
         del st.session_state.selected_match_row
         st.rerun()
 
-    # Fetch detailed data
-    details = {"found": False}
-    prediction = None
+    # Fetch comprehensive match details
     try:
         details = data.router.get_match_details(match_id)
         prediction = data.get_match_prediction(match_id)
     except Exception as e:
-        st.warning(f"Detailed data unavailable: {str(e)[:80]}")
+        st.warning(f"Fetching match data: {str(e)[:80]}")
+        details = {"found": False}
+        prediction = None
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # TOP ROW: Match Info + Odds + Prediction
-    # ══════════════════════════════════════════════════════════════════════════
-    col1, col2, col3 = st.columns([2, 1, 2])
+    # Create tabs for different information categories
+    tabs = st.tabs([
+        "📋 Match Info", "💰 Odds", "📊 Statistics", 
+        "⚔️ H2H", "👤 Players", "🎯 Prediction", "📈 Form"
+    ])
 
-    with col1:
-        st.markdown("##### 📋 MATCH INFORMATION")
-        info_items = {
-            "Match ID": match_id,
-            "League": match_row.get('LEAGUE', match_row.get('league', 'N/A')),
-            "Status": match_row.get('STATUS', match_row.get('status', 'N/A')),
-            "Date": match_row.get('DATE', match_row.get('dateEvent', match_row.get('match_date', '-'))),
-            "Time": match_row.get('TIME', match_row.get('strTime', match_row.get('match_time', '-'))),
-        }
-        for label, value in info_items.items():
-            st.markdown(f'<div class="stat-row"><span class="stat-label">{label}</span><span class="stat-value">{value}</span></div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("##### ⚖️ CURRENT ODDS")
-        home_odds = match_row.get('HOME', match_row.get('home_odds', '-'))
-        draw_odds = match_row.get('DRAW', match_row.get('draw_odds', '-'))
-        away_odds = match_row.get('AWAY', match_row.get('away_odds', '-'))
+    # ========== TAB 1: MATCH INFO ==========
+    with tabs[0]:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("##### 🏟️ Match Details")
+            match_info = {
+                "Match ID": match_id,
+                "League": match_row.get('LEAGUE', match_row.get('league', 'N/A')),
+                "Status": match_row.get('STATUS', match_row.get('status', 'N/A')),
+                "Date": match_row.get('DATE', match_row.get('dateEvent', match_row.get('match_date', '-'))),
+                "Time": match_row.get('TIME', match_row.get('strTime', match_row.get('match_time', '-'))),
+                "Venue": match_row.get('VENUE', match_row.get('venue', 'TBD')),
+                "Round": match_row.get('ROUND', match_row.get('round', '-')),
+            }
+            for label, value in match_info.items():
+                st.markdown(f'<div class="stat-row"><span class="stat-label">{label}</span><span class="stat-value">{value}</span></div>', unsafe_allow_html=True)
         
-        odds_html = '<div class="odds-row">'
-        odds_html += f'<div class="odds-box"><div class="odds-label">1 (Home)</div><div class="odds-value">{home_odds}</div></div>'
-        odds_html += f'<div class="odds-box"><div class="odds-label">X (Draw)</div><div class="odds-value">{draw_odds}</div></div>'
-        odds_html += f'<div class="odds-box"><div class="odds-label">2 (Away)</div><div class="odds-value">{away_odds}</div></div>'
-        odds_html += '</div>'
-        st.markdown(odds_html, unsafe_allow_html=True)
+        with col2:
+            st.markdown("##### 📺 Broadcast")
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Coverage</span><span class="stat-value">Live Stream Available</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Last Updated</span><span class="stat-value">{datetime.now().strftime("%H:%M:%S")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Minute</span><span class="stat-value">{match_row.get("MIN", "-")}</span></div>', unsafe_allow_html=True)
 
-    with col3:
-        st.markdown("##### 🎯 AI PREDICTION")
-        if prediction:
-            conf_color = "#00FF88" if prediction.confidence > 70 else "#FFD700" if prediction.confidence > 50 else "#FF4444"
-            st.markdown(f'<div style="font-size:2rem; color:{conf_color}; font-weight:900; text-align:center;">{prediction.confidence:.0f}%</div>', unsafe_allow_html=True)
-            st.markdown(f'<div style="text-align:center; color:#888; font-size:0.8rem;">Confidence</div>', unsafe_allow_html=True)
-            st.markdown(f'<div style="margin-top:10px; padding:8px; background:rgba(0,255,136,0.1); border-radius:6px; text-align:center; color:#00FF88; font-family:Orbitron;">Signal: {prediction.signal.upper()}</div>', unsafe_allow_html=True)
-        else:
-            st.info("Prediction loading from API...")
-
-    st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # TEAM PROFILES & FORM - Live API Data
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("##### 🏆 TEAM PROFILES & RECENT FORM")
-
-    team_col1, team_col2 = st.columns(2)
-
-    with team_col1:
-        st.markdown(f'<div style="background:rgba(0,255,136,0.05); border:1px solid rgba(0,255,136,0.2); border-radius:10px; padding:15px;">', unsafe_allow_html=True)
-        st.markdown(f'<div style="color:#00FF88; font-family:Orbitron; font-size:1.1rem; margin-bottom:10px;">{home} (Home)</div>', unsafe_allow_html=True)
+    # ========== TAB 2: ODDS ==========
+    with tabs[1]:
+        st.markdown("##### 💰 Current Odds")
         
-        # Fetch live home team form from API
-        home_form_data = data.get_team_form(home, match_id) if hasattr(data, 'get_team_form') else None
-        if home_form_data and home_form_data.get('form'):
-            form = home_form_data['form']
-            form_html = "".join([
-                f'<span style="display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; border-radius:4px; margin-right:4px; font-size:0.75rem; font-weight:700; {"background:#00FF88;color:#000;" if r=="W" else "background:#FFD700;color:#000;" if r=="D" else "background:#FF4444;color:#fff;"}">{r}</span>' 
-                for r in form
-            ])
-            st.markdown(f'<div style="margin-bottom:10px;">{form_html}</div>', unsafe_allow_html=True)
-            
-            stats = home_form_data.get('stats', {})
-            st.markdown(f'<div class="stat-row"><span class="stat-label">Home Record</span><span class="stat-value">{stats.get("record", "Loading...")}</span></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Scored</span><span class="stat-value">{stats.get("goals_scored", "...")}</span></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Conceded</span><span class="stat-value">{stats.get("goals_conceded", "...")}</span></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">{stats.get("clean_sheets", "...")}</span></div>', unsafe_allow_html=True)
-        else:
-            st.info("Team form data loading from API...")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with team_col2:
-        st.markdown(f'<div style="background:rgba(255,68,68,0.05); border:1px solid rgba(255,68,68,0.2); border-radius:10px; padding:15px;">', unsafe_allow_html=True)
-        st.markdown(f'<div style="color:#FF4444; font-family:Orbitron; font-size:1.1rem; margin-bottom:10px;">{away} (Away)</div>', unsafe_allow_html=True)
+        odds_data = {}
+        try:
+            odds_data = data.get_match_odds(match_id) if hasattr(data, 'get_match_odds') else {}
+        except:
+            pass
         
-        # Fetch live away team form from API
-        away_form_data = data.get_team_form(away, match_id) if hasattr(data, 'get_team_form') else None
-        if away_form_data and away_form_data.get('form'):
-            form = away_form_data['form']
-            form_html = "".join([
-                f'<span style="display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; border-radius:4px; margin-right:4px; font-size:0.75rem; font-weight:700; {"background:#00FF88;color:#000;" if r=="W" else "background:#FFD700;color:#000;" if r=="D" else "background:#FF4444;color:#fff;"}">{r}</span>' 
-                for r in form
-            ])
-            st.markdown(f'<div style="margin-bottom:10px;">{form_html}</div>', unsafe_allow_html=True)
-            
-            stats = away_form_data.get('stats', {})
-            st.markdown(f'<div class="stat-row"><span class="stat-label">Away Record</span><span class="stat-value">{stats.get("record", "Loading...")}</span></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Scored</span><span class="stat-value">{stats.get("goals_scored", "...")}</span></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Conceded</span><span class="stat-value">{stats.get("goals_conceded", "...")}</span></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">{stats.get("clean_sheets", "...")}</span></div>', unsafe_allow_html=True)
-        else:
-            st.info("Team form data loading from API...")
-        st.markdown('</div>', unsafe_allow_html=True)
+        # 1X2 Odds
+        st.markdown("**1X2 Match Winner**")
+        col1, col2, col3 = st.columns(3)
+        o_1x2 = odds_data.get("1x2", {})
+        col1.metric("Home (1)", o_1x2.get("home", match_row.get('HOME', '-')), delta=None)
+        col2.metric("Draw (X)", o_1x2.get("draw", match_row.get('DRAW', '-')), delta=None)
+        col3.metric("Away (2)", o_1x2.get("away", match_row.get('AWAY', '-')), delta=None)
+        
+        st.markdown("---")
+        
+        # Over/Under 2.5 Goals
+        st.markdown("**Over/Under 2.5 Goals**")
+        col1, col2 = st.columns(2)
+        o_ou = odds_data.get("over_under", {})
+        col1.metric("Over 2.5", o_ou.get("over_25", '-'), delta=None)
+        col2.metric("Under 2.5", o_ou.get("under_25", '-'), delta=None)
+        
+        st.markdown("---")
+        
+        # Both Teams to Score
+        st.markdown("**Both Teams to Score (BTTS)**")
+        col1, col2 = st.columns(2)
+        o_btts = odds_data.get("btts", {})
+        col1.metric("Yes", o_btts.get("yes", '-'), delta=None)
+        col2.metric("No", o_btts.get("no", '-'), delta=None)
 
-    st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
+    # ========== TAB 3: STATISTICS ==========
+    with tabs[2]:
+        st.markdown("##### 📊 Match Statistics")
+        
+        stats = details.get("statistics", {}) if isinstance(details, dict) else {}
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"**{home}**")
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Possession</span><span class="stat-value">{stats.get("home_possession", "-")}%</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Shots</span><span class="stat-value">{stats.get("home_shots", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Shots on Target</span><span class="stat-value">{stats.get("home_shots_on_target", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Corners</span><span class="stat-value">{stats.get("home_corners", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Fouls</span><span class="stat-value">{stats.get("home_fouls", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Yellow Cards</span><span class="stat-value">{stats.get("home_yellow_cards", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Red Cards</span><span class="stat-value">{stats.get("home_red_cards", "-")}</span></div>', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"**{away}**")
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Possession</span><span class="stat-value">{stats.get("away_possession", "-")}%</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Shots</span><span class="stat-value">{stats.get("away_shots", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Shots on Target</span><span class="stat-value">{stats.get("away_shots_on_target", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Corners</span><span class="stat-value">{stats.get("away_corners", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Fouls</span><span class="stat-value">{stats.get("away_fouls", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Yellow Cards</span><span class="stat-value">{stats.get("away_yellow_cards", "-")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Red Cards</span><span class="stat-value">{stats.get("away_red_cards", "-")}</span></div>', unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # HEAD TO HEAD & PLAYER PROFILES - Live API Data
-    # ══════════════════════════════════════════════════════════════════════════
-    h2h_col, player_col = st.columns(2)
-
-    with h2h_col:
-        st.markdown("##### ⚔️ HEAD TO HEAD (Last 5)")
-        # Fetch live H2H data from API
+    # ========== TAB 4: HEAD TO HEAD ==========
+    with tabs[3]:
+        st.markdown("##### ⚔️ Head to Head History")
+        
         h2h_data = data.get_head_to_head(home, away, match_id) if hasattr(data, 'get_head_to_head') else None
+        
         if h2h_data and len(h2h_data) > 0:
-            for h in h2h_data[:5]:
+            home_wins = sum(1 for h in h2h_data if h.get("score", "0-0").split("-")[0].strip() > h.get("score", "0-0").split("-")[1].strip() if len(h.get("score", "0-0").split("-")) == 2)
+            away_wins = sum(1 for h in h2h_data if h.get("score", "0-0").split("-")[1].strip() > h.get("score", "0-0").split("-")[0].strip() if len(h.get("score", "0-0").split("-")) == 2)
+            draws = len(h2h_data) - home_wins - away_wins
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric(f"{home} Wins", home_wins)
+            col2.metric("Draws", draws)
+            col3.metric(f"{away} Wins", away_wins)
+            
+            st.markdown("---")
+            st.markdown("**Recent Meetings**")
+            
+            for h in h2h_data[:10]:
                 st.markdown(f'<div class="stat-row"><span class="stat-label">{h.get("date", "N/A")}</span><span class="stat-value">{h.get("score", "N/A")}</span></div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="color:#666; font-size:0.7rem; margin-bottom:6px;">{h.get("competition", "")}</div>', unsafe_allow_html=True)
         else:
             st.info("Loading head-to-head data from API...")
 
-    with player_col:
-        st.markdown("##### 👤 KEY PLAYERS")
-        # Fetch live player data from API
+    # ========== TAB 5: PLAYERS ==========
+    with tabs[4]:
+        st.markdown("##### 👤 Key Players")
+        
         players = data.get_key_players(match_id) if hasattr(data, 'get_key_players') else None
+        
         if players and len(players) > 0:
-            for p in players[:5]:
-                team_color = "#00FF88" if p.get("team") == home else "#FF4444"
-                st.markdown(f'''
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #2a2a3e;">
-                        <div>
-                            <div style="color:#e6f1ff; font-weight:600;">{p.get("name", "Unknown")}</div>
-                            <div style="color:{team_color}; font-size:0.75rem;">{p.get("team", "N/A")}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div style="color:#FFD700; font-family:Orbitron; font-size:0.9rem;">⭐ {p.get("rating", "-")}</div>
-                            <div style="color:#888; font-size:0.7rem;">⚽ {p.get("goals", 0)} | 🅰️ {p.get("assists", 0)}</div>
-                        </div>
-                    </div>
-                ''', unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"**{home}**")
+                for p in players:
+                    if p.get("team") == home:
+                        st.markdown(f'<div style="padding:8px 0; border-bottom:1px solid #2a2a3e;">'
+                                   f'<div style="color:#e6f1ff; font-weight:600;">{p.get("name", "Unknown")}</div>'
+                                   f'<div style="color:#888; font-size:0.7rem;">⚽ {p.get("goals", 0)} goals | 🅰️ {p.get("assists", 0)} assists</div>'
+                                   f'<div style="color:#FFD700;">⭐ Rating: {p.get("rating", "-")}</div></div>', unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"**{away}**")
+                for p in players:
+                    if p.get("team") == away:
+                        st.markdown(f'<div style="padding:8px 0; border-bottom:1px solid #2a2a3e;">'
+                                   f'<div style="color:#e6f1ff; font-weight:600;">{p.get("name", "Unknown")}</div>'
+                                   f'<div style="color:#888; font-size:0.7rem;">⚽ {p.get("goals", 0)} goals | 🅰️ {p.get("assists", 0)} assists</div>'
+                                   f'<div style="color:#FFD700;">⭐ Rating: {p.get("rating", "-")}</div></div>', unsafe_allow_html=True)
         else:
             st.info("Player data loading from API...")
 
-    st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # ALL ODDS CATEGORIES - Live API Data
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("##### 💰 COMPLETE ODDS MARKET")
-
-    # Fetch live odds data from API
-    odds_data = data.get_match_odds(match_id) if hasattr(data, 'get_match_odds') else {}
-
-    odds_tabs = st.tabs(["1X2", "Over/Under", "BTTS", "Cards", "Corners", "Asian Handicap"])
-
-    with odds_tabs[0]:
-        o = odds_data.get("1x2", {})
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Home Win", o.get("home", "Loading..."), o.get("home_delta", ""))
-        c2.metric("Draw", o.get("draw", "Loading..."), o.get("draw_delta", ""))
-        c3.metric("Away Win", o.get("away", "Loading..."), o.get("away_delta", ""))
-
-    with odds_tabs[1]:
-        o = odds_data.get("over_under", {})
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Over 0.5", o.get("o0_5", "Loading..."), "")
-        c2.metric("Over 1.5", o.get("o1_5", "Loading..."), "")
-        c3.metric("Over 2.5", o.get("o2_5", "Loading..."), "")
-        c4.metric("Over 3.5", o.get("o3_5", "Loading..."), "")
-
-    with odds_tabs[2]:
-        o = odds_data.get("btts", {})
-        c1, c2 = st.columns(2)
-        c1.metric("BTTS Yes", o.get("yes", "Loading..."), "")
-        c2.metric("BTTS No", o.get("no", "Loading..."), "")
-
-    with odds_tabs[3]:
-        o = odds_data.get("cards", {})
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Over 2.5 Cards", o.get("o2_5", "Loading..."), "")
-        c2.metric("Over 4.5 Cards", o.get("o4_5", "Loading..."), "")
-        c3.metric("Home More Cards", o.get("home_more", "Loading..."), "")
-
-    with odds_tabs[4]:
-        o = odds_data.get("corners", {})
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Over 8.5", o.get("o8_5", "Loading..."), "")
-        c2.metric("Over 10.5", o.get("o10_5", "Loading..."), "")
-        c3.metric("Over 12.5", o.get("o12_5", "Loading..."), "")
-
-    with odds_tabs[5]:
-        o = odds_data.get("asian_handicap", {})
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Home -1.5", o.get("home_m1_5", "Loading..."), "")
-        c2.metric("Home -0.5", o.get("home_m0_5", "Loading..."), "")
-        c3.metric("Away +1.5", o.get("away_p1_5", "Loading..."), "")
-
-    st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # AI REASONING - Live API Data
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("##### 🧠 AI ANALYSIS REASONING")
-    
-    # Fetch live AI reasoning from API
-    if prediction and hasattr(prediction, 'reasoning') and prediction.reasoning:
-        for reason in prediction.reasoning:
-            st.markdown(f'<div style="padding:8px; margin:4px 0; background:rgba(212,175,55,0.05); border-left:3px solid #D4AF37; border-radius:0 6px 6px 0; color:#e6f1ff;">• {reason}</div>', unsafe_allow_html=True)
-    else:
-        ai_reasons = data.get_ai_reasoning(match_id) if hasattr(data, 'get_ai_reasoning') else None
-        if ai_reasons and len(ai_reasons) > 0:
-            for r in ai_reasons:
-                st.markdown(f'<div style="padding:8px; margin:4px 0; background:rgba(212,175,55,0.05); border-left:3px solid #D4AF37; border-radius:0 6px 6px 0; color:#e6f1ff;">• {r}</div>', unsafe_allow_html=True)
+    # ========== TAB 6: PREDICTION ==========
+    with tabs[5]:
+        st.markdown("##### 🎯 AI Match Prediction")
+        
+        if prediction and hasattr(prediction, 'home_win_prob'):
+            col1, col2, col3 = st.columns(3)
+            
+            home_prob = prediction.home_win_prob if hasattr(prediction, 'home_win_prob') else 33.3
+            draw_prob = prediction.draw_prob if hasattr(prediction, 'draw_prob') else 33.3
+            away_prob = prediction.away_win_prob if hasattr(prediction, 'away_win_prob') else 33.3
+            
+            col1.metric(f"{home} Win", f"{home_prob:.1f}%")
+            col2.metric("Draw", f"{draw_prob:.1f}%")
+            col3.metric(f"{away} Win", f"{away_prob:.1f}%")
+            
+            st.markdown("---")
+            st.markdown("**Analysis**")
+            confidence = prediction.confidence if hasattr(prediction, 'confidence') else "MEDIUM"
+            signal = prediction.signal if hasattr(prediction, 'signal') else "⚪ HOLD"
+            
+            conf_color = "#00FF88" if confidence == "HIGH" else "#FFD700" if confidence == "MEDIUM" else "#FF4444"
+            st.markdown(f'<div style="padding:10px; background:rgba(0,0,0,0.3); border-radius:8px;">'
+                       f'<div style="color:{conf_color};">Confidence: {confidence}</div>'
+                       f'<div style="color:#00FF88;">Signal: {signal}</div></div>', unsafe_allow_html=True)
+            
+            if hasattr(prediction, 'reasoning') and prediction.reasoning:
+                st.markdown("**Reasoning**")
+                for reason in prediction.reasoning[:5]:
+                    st.markdown(f'<div style="padding:5px; margin:3px 0; background:rgba(212,175,55,0.05); border-left:3px solid #D4AF37; border-radius:0 6px 6px 0;">• {reason}</div>', unsafe_allow_html=True)
         else:
-            st.info("AI analysis generating from live data...")
+            st.info("AI prediction loading from API...")
+
+    # ========== TAB 7: FORM ==========
+    with tabs[6]:
+        st.markdown("##### 📈 Recent Form")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"**{home} (Last 5 Matches)**")
+            home_form_data = data.get_team_form(home, match_id) if hasattr(data, 'get_team_form') else None
+            if home_form_data and home_form_data.get('form'):
+                form = home_form_data['form']
+                form_html = "".join([
+                    f'<span style="display:inline-block; width:35px; height:35px; line-height:35px; text-align:center; border-radius:4px; margin-right:8px; font-size:0.8rem; font-weight:700; {"background:#00FF88;color:#000;" if r=="W" else "background:#FFD700;color:#000;" if r=="D" else "background:#FF4444;color:#fff;"}">{r}</span>' 
+                    for r in form
+                ])
+                st.markdown(f'<div style="margin-bottom:15px;">{form_html}</div>', unsafe_allow_html=True)
+                
+                stats = home_form_data.get('stats', {})
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Scored</span><span class="stat-value">{stats.get("goals_scored", "-")}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Conceded</span><span class="stat-value">{stats.get("goals_conceded", "-")}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">{stats.get("clean_sheets", "-")}</span></div>', unsafe_allow_html=True)
+            else:
+                st.info("Form data loading from API...")
+        
+        with col2:
+            st.markdown(f"**{away} (Last 5 Matches)**")
+            away_form_data = data.get_team_form(away, match_id) if hasattr(data, 'get_team_form') else None
+            if away_form_data and away_form_data.get('form'):
+                form = away_form_data['form']
+                form_html = "".join([
+                    f'<span style="display:inline-block; width:35px; height:35px; line-height:35px; text-align:center; border-radius:4px; margin-right:8px; font-size:0.8rem; font-weight:700; {"background:#00FF88;color:#000;" if r=="W" else "background:#FFD700;color:#000;" if r=="D" else "background:#FF4444;color:#fff;"}">{r}</span>' 
+                    for r in form
+                ])
+                st.markdown(f'<div style="margin-bottom:15px;">{form_html}</div>', unsafe_allow_html=True)
+                
+                stats = away_form_data.get('stats', {})
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Scored</span><span class="stat-value">{stats.get("goals_scored", "-")}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Goals Conceded</span><span class="stat-value">{stats.get("goals_conceded", "-")}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">{stats.get("clean_sheets", "-")}</span></div>', unsafe_allow_html=True)
+            else:
+                st.info("Form data loading from API...")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1068,7 +1082,7 @@ def render_arena():
         st.markdown("<hr style='border-color:#333; margin:10px 0;'>", unsafe_allow_html=True)
         st.markdown('<div style="color:#D4AF37; font-family:Orbitron; font-size:0.9rem; text-align:center; margin-bottom:10px;">🏟️ ARENA CONTROLS</div>', unsafe_allow_html=True)
 
-        # Sport selector moved to sidebar
+        # Sport selector (First Dropdown)
         sport_names = list(SPORT_OPTIONS.keys())
         if 'selected_sport' not in st.session_state:
             st.session_state.selected_sport = sport_names[0]
@@ -1095,12 +1109,12 @@ def render_arena():
 
         st.markdown("<hr style='border-color:#333; margin:10px 0;'>", unsafe_allow_html=True)
 
-        # League dropdown
+        # League dropdown (Second Dropdown) - Populates based on first dropdown
         if f'league_options_{key_prefix}' not in st.session_state:
             st.session_state[f'league_options_{key_prefix}'] = [("ALL", "🏆 All Leagues")]
 
         try:
-            # FIXED: Pass selected_sport (string) not sport_key (dict)
+            # Pass the selected sport string to get leagues
             api_leagues = data.get_all_leagues(selected_sport)
             if api_leagues and len(api_leagues) > 0:
                 league_options = [("ALL", "🏆 All Leagues")]
@@ -1148,11 +1162,12 @@ def render_arena():
         selected_league_id = league_ids[league_labels.index(selected_label)]
         st.session_state[f'league_id_{key_prefix}'] = selected_league_id
 
-        # Status filter - Added UPCOMING
-        status_options = ["ALL", "LIVE", "UPCOMING", "SCHEDULED", "FINISHED"]
+        # Status filter (Third Dropdown) - Default to LIVE
+        status_options = ["LIVE", "UPCOMING", "SCHEDULED", "FINISHED", "ALL"]
         selected_status = st.selectbox(
             "📊 MATCH STATUS",
             options=status_options,
+            index=0,
             key=f"sidebar_status_{key_prefix}"
         )
 
@@ -1168,7 +1183,7 @@ def render_arena():
     # ─── MAIN AREA: Header + Match Cards ─────────────────────────────────────
     st.markdown(f'<div class="section-header">🏟️ EMPIRE ARENA — {selected_sport.upper()}</div>', unsafe_allow_html=True)
 
-    # FETCH MATCHES BASED ON FILTERS - FIXED: Use selected_sport (string) not sport_key (dict)
+    # Fetch matches based on filters - Use selected_sport (string) not sport_key (dict)
     try:
         if selected_status == "LIVE":
             matches_df = data.get_live_matches_df(selected_sport, selected_league_id)
@@ -1188,7 +1203,6 @@ def render_arena():
             live_df = data.get_live_matches_df(selected_sport)
             sched_df = data.get_upcoming_matches_df(selected_sport)
             
-            # Apply league filter to both dataframes
             if selected_league_id != "ALL":
                 league_name = None
                 for lid, label in league_options:
@@ -1201,7 +1215,6 @@ def render_arena():
                     if not sched_df.empty and "LEAGUE" in sched_df.columns:
                         sched_df = sched_df[sched_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
             
-            # Combine
             if not live_df.empty and not sched_df.empty:
                 matches_df = pd.concat([live_df, sched_df], ignore_index=True)
             elif not live_df.empty:
@@ -1214,7 +1227,8 @@ def render_arena():
 
     # Render match cards
     render_match_table(matches_df, "CARD VIEW", key_prefix, selected_league_id, selected_status)
-    
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PREDICTIONS CENTER
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1243,12 +1257,14 @@ def render_predictions():
         cal_data = pd.DataFrame({"BIN": [], "PREDICTED": [], "ACTUAL": [], "BETS": []})
         st.dataframe(cal_data, use_container_width=True, hide_index=True)
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ANALYTICS
 # ══════════════════════════════════════════════════════════════════════════════
 def render_analytics():
     st.markdown('<div class="section-header">📊 PERFORMANCE ANALYTICS</div>', unsafe_allow_html=True)
     st.info("📊 Performance analytics require database integration.")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN ROUTER
