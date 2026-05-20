@@ -1079,6 +1079,15 @@ def render_arena():
             index=sport_names.index(st.session_state.selected_sport),
             key="sidebar_sport_select"
         )
+        
+        # Clear league cache when sport changes
+        if 'prev_sport' not in st.session_state:
+            st.session_state.prev_sport = selected_sport
+        elif st.session_state.prev_sport != selected_sport:
+            key_prefix_old = st.session_state.prev_sport.replace(" ", "_").replace("⚽", "f").replace("🏀", "b").replace("🏈", "nfl").replace("🎾", "t").replace("🏒", "nhl")
+            st.session_state.pop(f'league_options_{key_prefix_old}', None)
+            st.session_state.prev_sport = selected_sport
+        
         st.session_state.selected_sport = selected_sport
 
         sport_key = SPORT_OPTIONS[selected_sport]
@@ -1091,18 +1100,34 @@ def render_arena():
             st.session_state[f'league_options_{key_prefix}'] = [("ALL", "🏆 All Leagues")]
 
         try:
-            api_leagues = data.get_all_leagues(sport_key)
-            if api_leagues:
+            # FIXED: Pass selected_sport (string) not sport_key (dict)
+            api_leagues = data.get_all_leagues(selected_sport)
+            if api_leagues and len(api_leagues) > 0:
                 league_options = [("ALL", "🏆 All Leagues")]
                 for league in api_leagues:
-                    display = f"{league['name']}"
-                    if league.get('country'):
-                        display += f" ({league['country']})"
-                    league_options.append((league['id'], display))
-                st.session_state[f'league_options_{key_prefix}'] = league_options
+                    if isinstance(league, dict):
+                        league_id = league.get('id', league.get('league_id', ''))
+                        league_name = league.get('name', 'Unknown')
+                        country = league.get('country', '')
+                    else:
+                        league_id = getattr(league, 'league_id', getattr(league, 'id', ''))
+                        league_name = getattr(league, 'name', 'Unknown')
+                        country = getattr(league, 'country', '')
+                    
+                    display = f"{league_name}"
+                    if country:
+                        display += f" ({country})"
+                    if league_id:
+                        league_options.append((str(league_id), display))
+                
+                if len(league_options) > 1:
+                    st.session_state[f'league_options_{key_prefix}'] = league_options
+                else:
+                    league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
             else:
                 league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
-        except Exception:
+        except Exception as e:
+            logger.error(f"League fetch error: {e}")
             league_options = st.session_state.get(f'league_options_{key_prefix}', [("ALL", "🏆 All Leagues")])
 
         league_labels = [opt[1] for opt in league_options]
@@ -1123,8 +1148,8 @@ def render_arena():
         selected_league_id = league_ids[league_labels.index(selected_label)]
         st.session_state[f'league_id_{key_prefix}'] = selected_league_id
 
-        # Status filter
-        status_options = ["ALL", "LIVE", "SCHEDULED", "FINISHED"]
+        # Status filter - Added UPCOMING
+        status_options = ["ALL", "LIVE", "UPCOMING", "SCHEDULED", "FINISHED"]
         selected_status = st.selectbox(
             "📊 MATCH STATUS",
             options=status_options,
@@ -1143,12 +1168,12 @@ def render_arena():
     # ─── MAIN AREA: Header + Match Cards ─────────────────────────────────────
     st.markdown(f'<div class="section-header">🏟️ EMPIRE ARENA — {selected_sport.upper()}</div>', unsafe_allow_html=True)
 
-    # Fetch matches based on filters
+    # FETCH MATCHES BASED ON FILTERS - FIXED: Use selected_sport (string) not sport_key (dict)
     try:
         if selected_status == "LIVE":
-            matches_df = data.get_live_matches_df(sport_key, selected_league_id)
-        elif selected_status == "SCHEDULED":
-            matches_df = data.get_upcoming_matches_df(sport_key)
+            matches_df = data.get_live_matches_df(selected_sport, selected_league_id)
+        elif selected_status == "UPCOMING" or selected_status == "SCHEDULED":
+            matches_df = data.get_upcoming_matches_df(selected_sport)
             if selected_league_id != "ALL" and not matches_df.empty and "LEAGUE" in matches_df.columns:
                 league_name = None
                 for lid, label in league_options:
@@ -1158,26 +1183,38 @@ def render_arena():
                 if league_name:
                     matches_df = matches_df[matches_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
         elif selected_status == "FINISHED":
-            matches_df = data.router.get_matches_by_status("FINISHED", sport_key, selected_league_id)
+            matches_df = data.router.get_matches_by_status("FINISHED", selected_sport, selected_league_id)
         else:  # ALL
-            live_df = data.get_live_matches_df(sport_key, selected_league_id)
-            sched_df = data.get_upcoming_matches_df(sport_key)
-            if selected_league_id != "ALL" and not sched_df.empty and "LEAGUE" in sched_df.columns:
+            live_df = data.get_live_matches_df(selected_sport)
+            sched_df = data.get_upcoming_matches_df(selected_sport)
+            
+            # Apply league filter to both dataframes
+            if selected_league_id != "ALL":
                 league_name = None
                 for lid, label in league_options:
                     if lid == selected_league_id:
                         league_name = label.replace("🏆 ", "").split(" (")[0]
                         break
                 if league_name:
-                    sched_df = sched_df[sched_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
-            matches_df = pd.concat([live_df, sched_df], ignore_index=True) if not live_df.empty else sched_df
+                    if not live_df.empty and "LEAGUE" in live_df.columns:
+                        live_df = live_df[live_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
+                    if not sched_df.empty and "LEAGUE" in sched_df.columns:
+                        sched_df = sched_df[sched_df["LEAGUE"].str.contains(league_name, case=False, na=False)]
+            
+            # Combine
+            if not live_df.empty and not sched_df.empty:
+                matches_df = pd.concat([live_df, sched_df], ignore_index=True)
+            elif not live_df.empty:
+                matches_df = live_df
+            else:
+                matches_df = sched_df
     except Exception as e:
         st.error(f"Error fetching matches: {str(e)[:100]}")
         matches_df = pd.DataFrame()
 
     # Render match cards
     render_match_table(matches_df, "CARD VIEW", key_prefix, selected_league_id, selected_status)
-
+    
 # ══════════════════════════════════════════════════════════════════════════════
 # PREDICTIONS CENTER
 # ══════════════════════════════════════════════════════════════════════════════
