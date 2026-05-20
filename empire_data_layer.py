@@ -99,6 +99,24 @@ class APIConfig:
         return bool(cls.API_SPORTS_KEY or cls.ODDS_API_KEY or cls.SPORTMONKS_KEY)
 
 
+# Quick test for API-SPORTS
+if APIConfig.API_SPORTS_KEY:
+    try:
+        test_response = requests.get(
+            "https://v3.football.api-sports.io/status",
+            headers={"x-apisports-key": APIConfig.API_SPORTS_KEY},
+            timeout=5
+        )
+        if test_response.status_code == 200:
+            logger.info("✅ API-SPORTS connection successful")
+        else:
+            logger.warning(f"⚠️ API-SPORTS returned status {test_response.status_code}")
+    except Exception as e:
+        logger.warning(f"⚠️ API-SPORTS test failed: {e}")
+else:
+    logger.warning("⚠️ API-SPORTS key not configured")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATA MODELS
 # ════════════════════════════════════════════════════════════════════════════════
@@ -408,7 +426,7 @@ class APISportsProvider(DataProvider):
         if cached:
             return self._parse_fixtures(cached)
         params = {"live": "all"}
-        if league_id:
+        if league_id and league_id != "ALL":
             params["league"] = league_id
         data = self._make_request(f"{self.base_url}/fixtures", self.headers, params)
         if not data:
@@ -1089,7 +1107,7 @@ class MySportsFeedsProvider(DataProvider):
     def get_all_leagues(self, sport: str = "football") -> List[League]:
         return []
 
-    def get_live_matches(self, sport: str = "nba", league_id: str = None) -> List[Match]:
+    def get_live_matches(self, sport: str = "NBA", league_id: str = None) -> List[Match]:
         if not APIConfig.MYSPORTSFEEDS_KEY:
             return []
         
@@ -1120,7 +1138,7 @@ class MySportsFeedsProvider(DataProvider):
             return self._parse_games(data)
         return []
 
-    def get_upcoming_matches(self, sport: str = "nba", days: int = 7) -> List[Match]:
+    def get_upcoming_matches(self, sport: str = "NBA", days: int = 7) -> List[Match]:
         if not APIConfig.MYSPORTSFEEDS_KEY:
             return []
         
@@ -1617,6 +1635,93 @@ class EmpireDataRouter:
         
         return [{"id": "ALL", "name": "All Events", "sport": sport, "country": "World"}]
 
+    # ========== FIXED: GET LIVE MATCHES WITH PROPER SPORT ROUTING ==========
+    def get_live_matches(self, sport: str = "Soccer", league_id: str = None) -> pd.DataFrame:
+        """Get live matches - sport can be 'Soccer', 'NBA', 'NFL', 'MLB', 'NHL'"""
+        all_matches = []
+        
+        logger.info(f"Fetching live matches for sport: {sport}, league_id: {league_id}")
+        
+        for provider in self.providers:
+            try:
+                if sport == "Soccer":
+                    if provider.name == "API-SPORTS":
+                        matches = provider.get_live_matches(league_id)
+                        if matches:
+                            all_matches.extend(matches)
+                            logger.info(f"{provider.name}: found {len(matches)} live soccer matches")
+                elif sport in ["NBA", "NFL", "MLB", "NHL"]:
+                    if provider.name == "MySportsFeeds":
+                        matches = provider.get_live_matches(sport)
+                        if matches:
+                            all_matches.extend(matches)
+                            logger.info(f"{provider.name}: found {len(matches)} live {sport} matches")
+                else:
+                    # Try all providers for other sports
+                    matches = provider.get_live_matches(sport, league_id)
+                    if matches:
+                        all_matches.extend(matches)
+            except Exception as e:
+                logger.warning(f"{provider.name} live fetch failed for {sport}: {e}")
+        
+        # Deduplicate
+        seen = set()
+        unique = []
+        for m in all_matches:
+            key = f"{m.home_team}|{m.away_team}|{m.start_time.strftime('%Y-%m-%d') if m.start_time else ''}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(m)
+        
+        if not unique:
+            logger.warning(f"No live matches found for sport: {sport}")
+            return pd.DataFrame()
+        
+        return pd.DataFrame([m.to_dataframe_row() for m in unique])
+
+    # ========== FIXED: GET UPCOMING MATCHES WITH PROPER SPORT ROUTING ==========
+    def get_upcoming_matches(self, sport: str = "Soccer") -> pd.DataFrame:
+        """Get upcoming matches - sport can be 'Soccer', 'NBA', 'NFL', 'MLB', 'NHL'"""
+        all_matches = []
+        
+        logger.info(f"Fetching upcoming matches for sport: {sport}")
+        
+        for provider in self.providers:
+            try:
+                if sport == "Soccer":
+                    if provider.name == "API-SPORTS":
+                        matches = provider.get_upcoming_matches(days=14)
+                        if matches:
+                            all_matches.extend(matches)
+                            logger.info(f"{provider.name}: found {len(matches)} upcoming soccer matches")
+                elif sport in ["NBA", "NFL", "MLB", "NHL"]:
+                    if provider.name == "MySportsFeeds":
+                        matches = provider.get_upcoming_matches(sport, days=14)
+                        if matches:
+                            all_matches.extend(matches)
+                            logger.info(f"{provider.name}: found {len(matches)} upcoming {sport} matches")
+                else:
+                    matches = provider.get_upcoming_matches(sport, days=14)
+                    if matches:
+                        all_matches.extend(matches)
+            except Exception as e:
+                logger.warning(f"{provider.name} upcoming fetch failed for {sport}: {e}")
+        
+        # Deduplicate
+        seen = set()
+        unique = []
+        for m in all_matches:
+            key = f"{m.home_team}|{m.away_team}|{m.start_time.strftime('%Y-%m-%d') if m.start_time else ''}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(m)
+        
+        if not unique:
+            logger.warning(f"No upcoming matches found for sport: {sport}")
+            return pd.DataFrame()
+        
+        return pd.DataFrame([m.to_dataframe_row() for m in unique])
+
     def get_live_matches_by_league(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
         if not league_id or league_id == "ALL":
             return self.get_live_matches(sport)
@@ -1637,56 +1742,6 @@ class EmpireDataRouter:
             except Exception as e:
                 logger.warning(f"{provider.name} league fetch failed for {league_id}: {e}")
 
-        seen = set()
-        unique = []
-        for m in all_matches:
-            dedup_key = f"{m.home_team}|{m.away_team}|{m.start_time.strftime('%Y-%m-%d') if m.start_time else ''}"
-            if dedup_key not in seen:
-                seen.add(dedup_key)
-                unique.append(m)
-
-        if not unique:
-            return pd.DataFrame(columns=["MATCH_ID", "TIME", "LEAGUE", "HOME_TEAM", "AWAY_TEAM", "MATCH", "STATUS", "SCORE", "MIN",
-                                        "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"])
-        return pd.DataFrame([m.to_dataframe_row() for m in unique])
-
-    def get_live_matches(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
-        if league_id and league_id != "ALL":
-            return self.get_live_matches_by_league(sport, league_id)
-
-        all_matches = []
-        for provider in self.providers:
-            try:
-                matches = provider.get_live_matches(sport, league_id)
-                if matches:
-                    all_matches.extend(matches)
-                    logger.info(f"{provider.name}: {len(matches)} live matches")
-            except Exception as e:
-                logger.warning(f"{provider.name} live fetch failed: {e}")
-
-        seen = set()
-        unique = []
-        for m in all_matches:
-            dedup_key = f"{m.home_team}|{m.away_team}|{m.start_time.strftime('%Y-%m-%d') if m.start_time else ''}"
-            if dedup_key not in seen:
-                seen.add(dedup_key)
-                unique.append(m)
-
-        if not unique:
-            return pd.DataFrame(columns=["MATCH_ID", "TIME", "LEAGUE", "HOME_TEAM", "AWAY_TEAM", "MATCH", "STATUS", "SCORE", "MIN",
-                                        "HOME", "DRAW", "AWAY", "PREDICTION", "EV", "CONF", "SIGNAL"])
-        return pd.DataFrame([m.to_dataframe_row() for m in unique])
-
-    def get_upcoming_matches(self, sport: str = "football") -> pd.DataFrame:
-        all_matches = []
-        for provider in self.providers:
-            try:
-                matches = provider.get_upcoming_matches(sport, days=14)
-                if matches:
-                    all_matches.extend(matches)
-            except Exception as e:
-                logger.warning(f"{provider.name} upcoming fetch failed: {e}")
-        
         seen = set()
         unique = []
         for m in all_matches:
@@ -1906,10 +1961,13 @@ class EmpireDashboardData:
     def get_all_leagues(self, sport: str = "football") -> List[Dict]:
         return self.router.get_all_leagues(sport)
 
-    def get_live_matches_df(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
+    # FIXED: Method signatures accept sport string
+    def get_live_matches_df(self, sport: str = "Soccer", league_id: str = None) -> pd.DataFrame:
+        """Get live matches for a given sport"""
         return self.router.get_live_matches(sport, league_id)
 
-    def get_upcoming_matches_df(self, sport: str = "football", league_id: str = None) -> pd.DataFrame:
+    def get_upcoming_matches_df(self, sport: str = "Soccer", league_id: str = None) -> pd.DataFrame:
+        """Get upcoming matches for a given sport"""
         return self.router.get_upcoming_matches(sport)
 
     def get_value_opportunities_df(self) -> pd.DataFrame:
