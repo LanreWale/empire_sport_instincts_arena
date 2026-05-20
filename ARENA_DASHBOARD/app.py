@@ -425,7 +425,7 @@ def render_header():
         b64 = base64.b64encode(img_bytes).decode()
         logo_html = f'<img src="data:image/png;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
     else:
-        svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/><stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/></linearGradient></defs><rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/><text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text><text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text></svg>"""
+        svg = """<<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 140"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1"/><stop offset="100%" style="stop-color:#FFD700;stop-opacity:1"/></linearGradient></defs><rect width="900" height="140" rx="12" fill="#16213e" stroke="#D4AF37" stroke-width="2"/><text x="450" y="85" font-family="Arial Black, Impact, sans-serif" font-size="52" fill="url(#g1)" text-anchor="middle" font-weight="900" letter-spacing="6">EMPIRE SPORT INSTINCTS ARENA</text><text x="450" y="115" font-family="Arial, sans-serif" font-size="16" fill="#888" text-anchor="middle" letter-spacing="10">ELITE TRADING DASHBOARD v2.4</text></svg>"""
         b64 = base64.b64encode(svg.encode()).decode()
         logo_html = f'<img src="data:image/svg+xml;base64,{b64}" class="logo-img" alt="EMPIRE Logo">'
 
@@ -637,7 +637,7 @@ def render_match_table(matches_df, key_prefix, selected_league_id, selected_stat
         
         # Status badge
         su = str(status).upper()
-        if "LIVE" in su or "1H" in su or "2H" in su:
+        if "LIVE" in su or "1H" in su or "2H" in su or "IN_PROGRESS" in su:
             status_color, status_bg, status_text = "#00FF88", "rgba(0,255,136,0.15)", "● LIVE"
         elif "FINISHED" in su or "FT" in su:
             status_color, status_bg, status_text = "#888888", "rgba(136,136,136,0.15)", "FINISHED"
@@ -684,6 +684,7 @@ def render_match_table(matches_df, key_prefix, selected_league_id, selected_stat
                 st.session_state.selected_match_row = row.to_dict()
                 st.session_state.selected_match_home = home
                 st.session_state.selected_match_away = away
+                st.session_state.selected_match_sport = key_prefix
                 st.rerun()
 
 
@@ -693,42 +694,208 @@ def render_match_table(matches_df, key_prefix, selected_league_id, selected_stat
 def render_match_analysis_panel():
     """Render detailed analysis when a match is selected."""
     if 'selected_match_id' not in st.session_state:
-        st.info("👆 Select a match from the sidebar to view detailed analysis.")
+        st.info("👆 Select a match from the list to view detailed analysis.")
         return
 
     match_id = st.session_state.selected_match_id
     match_row = st.session_state.get('selected_match_row', {})
     home = st.session_state.get('selected_match_home', 'Home')
     away = st.session_state.get('selected_match_away', 'Away')
+    sport = st.session_state.get('selected_match_sport', 'Soccer')
 
     st.markdown(f'<div class="section-header">🔍 MATCH ANALYSIS — {home} vs {away}</div>', unsafe_allow_html=True)
 
     if st.button("← Back to Match List", use_container_width=False):
-        del st.session_state.selected_match_id
-        del st.session_state.selected_match_row
+        for k in ['selected_match_id', 'selected_match_row', 'selected_match_home', 'selected_match_away', 'selected_match_sport']:
+            st.session_state.pop(k, None)
         st.rerun()
 
-    # Display match info
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("##### 📋 MATCH INFORMATION")
-        info_items = {
-            "Match ID": match_id,
-            "League": match_row.get('LEAGUE', 'N/A'),
-            "Status": match_row.get('STATUS', 'N/A'),
-            "Time": match_row.get('TIME', 'TBD'),
-        }
-        for label, value in info_items.items():
-            st.markdown(f'<div class="stat-row"><span class="stat-label">{label}</span><span class="stat-value">{value}</span></div>', unsafe_allow_html=True)
+    # Fetch detailed data from data layer
+    try:
+        details = data.get_match_details(match_id, sport, home, away)
+        h2h = data.get_head_to_head(home, away, sport)
+        home_history = data.get_team_history(home, sport)
+        away_history = data.get_team_history(away, sport)
+        odds = data.get_match_odds(match_id)
+        stats = data.get_match_statistics(match_id)
+    except Exception as e:
+        st.error(f"Error loading match details: {e}")
+        details, h2h, home_history, away_history, odds, stats = {}, [], {}, {}, {}, {}
+
+    # Organized tabs
+    tabs = st.tabs(["📋 Match Info", "⚖️ Odds & Markets", "⚔️ H2H History", "🏃 Team Form", "📈 Live Statistics"])
     
-    with col2:
-        st.markdown("##### ⚖️ CURRENT ODDS")
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Home</span><span class="stat-value">{match_row.get("HOME", "-")}</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Draw</span><span class="stat-value">{match_row.get("DRAW", "-")}</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="stat-row"><span class="stat-label">Away</span><span class="stat-value">{match_row.get("AWAY", "-")}</span></div>', unsafe_allow_html=True)
-    
-    st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
-    st.info("Full match analysis including H2H, player stats, and form coming from live APIs.")
+    with tabs[0]:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("##### 📋 MATCH INFORMATION")
+            info_items = {
+                "Match ID": match_id,
+                "League": match_row.get('LEAGUE', 'N/A'),
+                "Status": match_row.get('STATUS', 'N/A'),
+                "Time": match_row.get('TIME', 'TBD'),
+                "Home Team": home,
+                "Away Team": away,
+            }
+            for label, value in info_items.items():
+                st.markdown(f'<div class="stat-row"><span class="stat-label">{label}</span><span class="stat-value">{value}</span></div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown("##### 🏟️ VENUE & CONDITIONS")
+            venue = details.get("venue", "TBD")
+            referee = details.get("referee", "TBD")
+            weather = details.get("weather", "TBD")
+            attendance = details.get("attendance", "TBD")
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Venue</span><span class="stat-value">{venue}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Referee</span><span class="stat-value">{referee}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Weather</span><span class="stat-value">{weather}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-row"><span class="stat-label">Attendance</span><span class="stat-value">{attendance}</span></div>', unsafe_allow_html=True)
+
+    with tabs[1]:
+        st.markdown("##### ⚖️ BETTING ODDS & MARKETS")
+        if odds:
+            # 1X2
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown('<div class="odds-box"><div class="odds-label">HOME WIN</div><div class="odds-value">{}</div></div>'.format(odds.get("1x2", {}).get("home", "-")), unsafe_allow_html=True)
+            with col2:
+                st.markdown('<div class="odds-box"><div class="odds-label">DRAW</div><div class="odds-value">{}</div></div>'.format(odds.get("1x2", {}).get("draw", "-")), unsafe_allow_html=True)
+            with col3:
+                st.markdown('<div class="odds-box"><div class="odds-label">AWAY WIN</div><div class="odds-value">{}</div></div>'.format(odds.get("1x2", {}).get("away", "-")), unsafe_allow_html=True)
+            
+            st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
+            
+            # Additional markets
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                ou = odds.get("over_under", {})
+                st.metric("Over 2.5", ou.get("over_2_5", "-"))
+                st.metric("Under 2.5", ou.get("under_2_5", "-"))
+            with c2:
+                ht = odds.get("ht_ft", {})
+                st.metric("HT/FT 1/1", ht.get("1/1", "-"))
+                st.metric("HT/FT X/X", ht.get("X/X", "-"))
+            with c3:
+                ca = odds.get("cards", {})
+                st.metric("Cards O 3.5", ca.get("over_3_5", "-"))
+                st.metric("Cards U 3.5", ca.get("under_3_5", "-"))
+            with c4:
+                co = odds.get("corners", {})
+                st.metric("Corners O 9.5", co.get("over_9_5", "-"))
+                st.metric("Corners U 9.5", co.get("under_9_5", "-"))
+            
+            st.markdown("<hr class='gold-divider'>", unsafe_allow_html=True)
+            
+            c5, c6, c7 = st.columns(3)
+            with c5:
+                fk = odds.get("free_kicks", {})
+                st.metric("Free Kicks O 20.5", fk.get("over_20_5", "-"))
+                st.metric("Free Kicks U 20.5", fk.get("under_20_5", "-"))
+            with c6:
+                pe = odds.get("penalty", {})
+                st.metric("Penalty Yes", pe.get("yes", "-"))
+                st.metric("Penalty No", pe.get("no", "-"))
+            with c7:
+                off = odds.get("offsides", {})
+                st.metric("Offsides O 3.5", off.get("over_3_5", "-"))
+                st.metric("Offsides U 3.5", off.get("under_3_5", "-"))
+        else:
+            st.info("Odds data unavailable for this match.")
+
+    with tabs[2]:
+        st.markdown("##### ⚔️ HEAD TO HEAD HISTORY")
+        if h2h:
+            for match in h2h:
+                winner = match.get("winner", "")
+                winner_color = "#00FF88" if winner == home else ("#FF4444" if winner == away else "#FFD700")
+                st.markdown(f"""
+                <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; margin: 5px 0;">
+                    <div style="display:flex; justify-content:space-between; color:#8892b0; font-size:0.75rem;">
+                        <span>{match.get('date', '')}</span><span>{match.get('league', '')}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+                        <span style="color:#e6f1ff; font-weight:600;">{match.get('home', '')}</span>
+                        <span style="color:{winner_color}; font-weight:700; font-size:1.1rem;">{match.get('score', '')}</span>
+                        <span style="color:#e6f1ff; font-weight:600;">{match.get('away', '')}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No head-to-head history available.")
+
+    with tabs[3]:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"##### 🏠 {home} FORM & PLAYERS")
+            if home_history:
+                st.markdown("**Last 5 Matches**")
+                for match in home_history.get("last_5", []):
+                    result = match.get("result", "?")
+                    result_color = "#00FF88" if result == "W" else ("#FF4444" if result == "L" else "#FFD700")
+                    st.markdown(f'<span style="color:{result_color}; font-weight:700; font-size:1.1rem;">{result}</span> <span style="color:#888; font-size:0.85rem;">vs {match.get("opponent", "")} — {match.get("score", "")}</span>', unsafe_allow_html=True)
+                st.markdown("<hr style='border-color:#333; margin:10px 0;'>", unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Top Scorer</span><span class="stat-value">{home_history.get("top_scorer", "N/A")}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">{home_history.get("clean_sheets", 0)}</span></div>', unsafe_allow_html=True)
+                injuries = home_history.get("injuries", [])
+                if injuries:
+                    st.markdown("**🚑 Injuries**")
+                    for inj in injuries:
+                        st.markdown(f'<span style="color:#FF4444; font-size:0.85rem;">● {inj}</span>', unsafe_allow_html=True)
+            else:
+                st.info("No team data available.")
+        with col2:
+            st.markdown(f"##### ✈️ {away} FORM & PLAYERS")
+            if away_history:
+                st.markdown("**Last 5 Matches**")
+                for match in away_history.get("last_5", []):
+                    result = match.get("result", "?")
+                    result_color = "#00FF88" if result == "W" else ("#FF4444" if result == "L" else "#FFD700")
+                    st.markdown(f'<span style="color:{result_color}; font-weight:700; font-size:1.1rem;">{result}</span> <span style="color:#888; font-size:0.85rem;">vs {match.get("opponent", "")} — {match.get("score", "")}</span>', unsafe_allow_html=True)
+                st.markdown("<hr style='border-color:#333; margin:10px 0;'>", unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Top Scorer</span><span class="stat-value">{away_history.get("top_scorer", "N/A")}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-row"><span class="stat-label">Clean Sheets</span><span class="stat-value">{away_history.get("clean_sheets", 0)}</span></div>', unsafe_allow_html=True)
+                injuries = away_history.get("injuries", [])
+                if injuries:
+                    st.markdown("**🚑 Injuries**")
+                    for inj in injuries:
+                        st.markdown(f'<span style="color:#FF4444; font-size:0.85rem;">● {inj}</span>', unsafe_allow_html=True)
+            else:
+                st.info("No team data available.")
+
+    with tabs[4]:
+        st.markdown("##### 📈 LIVE STATISTICS & EVENTS")
+        if stats:
+            metrics = [
+                ("Possession %", "possession"),
+                ("Shots", "shots"),
+                ("Shots on Target", "shots_on_target"),
+                ("Corners", "corners"),
+                ("Fouls", "fouls"),
+                ("Yellow Cards", "yellow_cards"),
+                ("Red Cards", "red_cards"),
+                ("Offsides", "offsides"),
+                ("Free Kicks", "free_kicks"),
+                ("Penalties", "penalties"),
+            ]
+            for label, key in metrics:
+                home_val = stats.get(key, {}).get("home", 0)
+                away_val = stats.get(key, {}).get("away", 0)
+                total = home_val + away_val if (home_val + away_val) > 0 else 1
+                home_pct = (home_val / total) * 100
+                away_pct = (away_val / total) * 100
+                
+                st.markdown(f"""
+                <div style="margin: 10px 0;">
+                    <div style="display:flex; justify-content:space-between; color:#888; font-size:0.8rem; margin-bottom:4px;">
+                        <span>{home}</span><span style="color:#D4AF37; font-weight:700;">{label}</span><span>{away}</span>
+                    </div>
+                    <div style="display:flex; height:28px; background:rgba(255,255,255,0.05); border-radius:4px; overflow:hidden;">
+                        <div style="width:{home_pct}%; background:linear-gradient(90deg, #D4AF37, #FFD700); display:flex; align-items:center; justify-content:flex-start; padding-left:10px; color:#000; font-weight:700; font-size:0.85rem;">{home_val}</div>
+                        <div style="width:{away_pct}%; background:linear-gradient(90deg, #00d4ff, #0099cc); display:flex; align-items:center; justify-content:flex-end; padding-right:10px; color:#fff; font-weight:700; font-size:0.85rem;">{away_val}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("Live statistics unavailable for this match.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -747,16 +914,29 @@ def render_arena():
 
         # Sport selector
         sport_names = list(SPORT_OPTIONS.keys())
-        if 'selected_sport' not in st.session_state:
-            st.session_state.selected_sport = sport_names[0]
+        default_sport = st.session_state.get("selected_sport", sport_names[0])
+        if default_sport not in sport_names:
+            default_sport = sport_names[0]
 
         selected_sport = st.selectbox(
             "🎯 SELECT SPORT",
             options=sport_names,
-            index=sport_names.index(st.session_state.selected_sport),
+            index=sport_names.index(default_sport),
             key="sidebar_sport_select"
         )
         st.session_state.selected_sport = selected_sport
+
+        # ─── Sport-change detection: reset league & match ─────────────────────
+        prev_sport = st.session_state.get("_prev_selected_sport")
+        if prev_sport != selected_sport:
+            st.session_state._prev_selected_sport = selected_sport
+            st.session_state.selected_league_id = "ALL"
+            st.session_state.selected_status = "LIVE"
+            for k in ['selected_match_id', 'selected_match_row', 'selected_match_home', 'selected_match_away', 'selected_match_sport']:
+                st.session_state.pop(k, None)
+            if prev_sport is not None:
+                st.session_state.pop(f"league_options_{prev_sport}", None)
+            st.rerun()
 
         st.markdown("<hr style='border-color:#333; margin:10px 0;'>", unsafe_allow_html=True)
 
@@ -781,29 +961,46 @@ def render_arena():
             logger.error(f"League fetch error: {e}")
             league_options = st.session_state.get(cache_key, [("ALL", "🏆 All Leagues")])
 
-        league_labels = [opt[1] for opt in league_options]
         league_ids = [opt[0] for opt in league_options]
+        league_labels = [opt[1] for opt in league_options]
+
+        current_league = st.session_state.get("selected_league_id", "ALL")
+        try:
+            league_index = league_ids.index(current_league)
+        except ValueError:
+            league_index = 0
+            st.session_state.selected_league_id = "ALL"
 
         selected_label = st.selectbox(
             "🏆 SELECT LEAGUE",
             options=league_labels,
+            index=league_index,
             key="sidebar_league_select"
         )
         selected_league_id = league_ids[league_labels.index(selected_label)]
+        st.session_state.selected_league_id = selected_league_id
 
         # Status filter
         status_options = ["LIVE", "UPCOMING", "SCHEDULED", "FINISHED", "ALL"]
+        current_status = st.session_state.get("selected_status", "LIVE")
+        if current_status not in status_options:
+            current_status = "LIVE"
+            
         selected_status = st.selectbox(
             "📊 MATCH STATUS",
             options=status_options,
-            index=0,
+            index=status_options.index(current_status),
             key="sidebar_status_select"
         )
+        st.session_state.selected_status = selected_status
 
         # Refresh button
         if st.button("🔄 REFRESH DATA", use_container_width=True):
             st.session_state.last_refresh = time.time()
             st.cache_data.clear()
+            for key in list(st.session_state.keys()):
+                if key.startswith("league_options_"):
+                    del st.session_state[key]
             st.rerun()
 
         st.markdown("<hr style='border-color:#333; margin:10px 0;'>", unsafe_allow_html=True)
@@ -812,79 +1009,35 @@ def render_arena():
     st.markdown(f'<div class="section-header">🏟️ EMPIRE ARENA — {selected_sport.upper()}</div>', unsafe_allow_html=True)
 
     # Fetch matches based on filters
+    matches_df = pd.DataFrame()
     try:
+        league_filter = selected_league_id if selected_league_id != "ALL" else None
+        
         if selected_status == "LIVE":
-            matches_df = data.get_live_matches_df(selected_sport, selected_league_id if selected_league_id != "ALL" else None)
+            matches_df = data.get_live_matches_df(selected_sport, league_filter)
         elif selected_status in ["UPCOMING", "SCHEDULED"]:
-            matches_df = data.get_upcoming_matches_df(selected_sport)
+            matches_df = data.get_upcoming_matches_df(selected_sport, league_filter)
         elif selected_status == "FINISHED":
-            matches_df = pd.DataFrame()  # Placeholder
+            matches_df = data.get_finished_matches_df(selected_sport, league_filter)
         else:  # ALL
-            live_df = data.get_live_matches_df(selected_sport, selected_league_id if selected_league_id != "ALL" else None)
-            upcoming_df = data.get_upcoming_matches_df(selected_sport)
-            if not live_df.empty and not upcoming_df.empty:
-                matches_df = pd.concat([live_df, upcoming_df], ignore_index=True)
-            elif not live_df.empty:
-                matches_df = live_df
-            else:
-                matches_df = upcoming_df
+            live_df = data.get_live_matches_df(selected_sport, league_filter)
+            upcoming_df = data.get_upcoming_matches_df(selected_sport, league_filter)
+            finished_df = data.get_finished_matches_df(selected_sport, league_filter)
+            dfs = [df for df in [live_df, upcoming_df, finished_df] if not df.empty]
+            if dfs:
+                matches_df = pd.concat(dfs, ignore_index=True)
     except Exception as e:
         st.error(f"Error fetching matches: {str(e)}")
-        matches_df = pd.DataFrame()
+        logger.exception("Match fetch error")
 
     # Render match cards
     if matches_df.empty:
-        st.info(f"No {selected_status.lower()} matches found for {selected_sport}. Try another filter.")
+        filter_desc = f"{selected_status.lower()} matches"
+        league_desc = f" in selected league" if selected_league_id != "ALL" else ""
+        st.info(f"No {filter_desc} found for {selected_sport}{league_desc}. Try another filter or refresh.")
     else:
-        st.markdown(f"<div style='color:#888; font-size:0.85rem; margin-bottom:10px;'>📊 Showing {len(matches_df)} matches</div>", unsafe_allow_html=True)
-        
-        for idx, row in matches_df.iterrows():
-            home = row.get("MATCH", "").split(" vs ")[0] if " vs " in row.get("MATCH", "") else row.get("HOME_TEAM", "TBD")
-            away = row.get("MATCH", "").split(" vs ")[1] if " vs " in row.get("MATCH", "") else row.get("AWAY_TEAM", "TBD")
-            score = row.get("SCORE", "vs")
-            status = row.get("STATUS", "SCHEDULED")
-            league = row.get("LEAGUE", "")
-            match_time = row.get("TIME", "")
-            match_id = row.get("MATCH_ID", str(idx))
-            
-            su = str(status).upper()
-            if "LIVE" in su or "1H" in su or "2H" in su:
-                status_color, status_bg, status_text = "#00FF88", "rgba(0,255,136,0.15)", "● LIVE"
-            elif "FINISHED" in su or "FT" in su:
-                status_color, status_bg, status_text = "#888888", "rgba(136,136,136,0.15)", "FINISHED"
-            else:
-                status_color, status_bg, status_text = "#FFAA00", "rgba(255,170,0,0.15)", "UPCOMING"
-
-            card_html = f"""
-            <div style="background: linear-gradient(135deg, rgba(20,25,40,0.9), rgba(10,15,30,0.95)); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 16px; margin: 8px 0;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <span style="color:#8892b0; font-size:0.75rem;">{league}</span>
-                    <span style="color:{status_color};background:{status_bg};padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:700;">{status_text}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div style="flex:1; text-align:left;">
-                        <div style="color:#e6f1ff; font-size:1rem; font-weight:600;">{home}</div>
-                    </div>
-                    <div style="padding:0 20px; text-align:center;">
-                        <div style="color:#00d4ff; font-size:1.4rem; font-weight:700; letter-spacing:2px;">{score}</div>
-                        <div style="color:#8892b0; font-size:0.65rem; margin-top:2px;">{match_time}</div>
-                    </div>
-                    <div style="flex:1; text-align:right;">
-                        <div style="color:#e6f1ff; font-size:1rem; font-weight:600;">{away}</div>
-                    </div>
-                </div>
-            </div>
-            """
-            st.markdown(card_html, unsafe_allow_html=True)
-            
-            btn_cols = st.columns([6, 1])
-            with btn_cols[1]:
-                if st.button("🔍", key=f"view_{selected_sport}_{match_id}_{idx}", help="View match details"):
-                    st.session_state.selected_match_id = match_id
-                    st.session_state.selected_match_row = row.to_dict()
-                    st.session_state.selected_match_home = home
-                    st.session_state.selected_match_away = away
-                    st.rerun()
+        st.markdown(f"<div style='color:#888; font-size:0.85rem; margin-bottom:10px;'>📊 Showing {len(matches_df)} {selected_status.lower()} matches</div>", unsafe_allow_html=True)
+        render_match_table(matches_df, selected_sport, selected_league_id, selected_status)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -915,6 +1068,9 @@ if __name__ == "__main__":
         if st.button("🔄 FORCE REFRESH", use_container_width=True):
             st.session_state.last_refresh = time.time()
             st.cache_data.clear()
+            for key in list(st.session_state.keys()):
+                if key.startswith("league_options_"):
+                    del st.session_state[key]
             st.rerun()
 
     with col_status:
