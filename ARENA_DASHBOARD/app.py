@@ -661,16 +661,17 @@ selected_sport, selected_league_id, selected_status = render_sidebar()
 render_ticker()
 
 # Top bar: force-refresh + auto-refresh countdown
+elapsed      = time.time() - st.session_state.last_refresh
+next_refresh = max(0, REFRESH_INTERVAL - elapsed)
+status_color = "#00ff88" if data.is_live else "#FFD700"
+mode_text    = "LIVE" if data.is_live else "DEMO"
+
 cb, cs = st.columns([1, 5])
 with cb:
     if st.button("🔄 FORCE REFRESH", use_container_width=True):
         _clear_all_caches()
         st.rerun()
 with cs:
-    elapsed      = time.time() - st.session_state.last_refresh
-    next_refresh = max(0, REFRESH_INTERVAL - elapsed)
-    status_color = "#00ff88" if data.is_live else "#FFD700"
-    mode_text    = "LIVE" if data.is_live else "DEMO"
     st.markdown(
         f'<div style="color:{status_color};font-family:Orbitron;font-size:.8rem;padding-top:8px;">'
         f'● {mode_text} | Auto-refresh in {int(next_refresh)}s</div>',
