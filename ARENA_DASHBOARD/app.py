@@ -654,13 +654,8 @@ def render_analytics():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MAIN
+# TOP BAR  — force-refresh button + auto-refresh countdown
 # ══════════════════════════════════════════════════════════════════════════════
-render_header()
-selected_sport, selected_league_id, selected_status = render_sidebar()
-render_ticker()
-
-# Top bar: force-refresh + auto-refresh countdown
 def render_top_bar():
     elapsed = time.time() - st.session_state.last_refresh
     if elapsed >= REFRESH_INTERVAL:
@@ -678,6 +673,14 @@ def render_top_bar():
             f'● {mode} | Auto-refresh in {int(max(0, REFRESH_INTERVAL - elapsed))}s</div>',
             unsafe_allow_html=True,
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MAIN
+# ══════════════════════════════════════════════════════════════════════════════
+render_header()
+selected_sport, selected_league_id, selected_status = render_sidebar()
+render_ticker()
 
 render_top_bar()
 
