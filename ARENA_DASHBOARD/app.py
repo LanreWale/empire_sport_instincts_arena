@@ -100,16 +100,25 @@ st.html("""
 # SPORT CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 SPORT_OPTIONS = {
-    "Soccer":    {"icon": "⚽",  "provider": "API-SPORTS"},
-    "NBA":       {"icon": "🏀",  "provider": "MySportsFeeds"},
-    "NFL":       {"icon": "🏈",  "provider": "MySportsFeeds"},
-    "MLB":       {"icon": "⚾",  "provider": "MySportsFeeds"},
-    "NHL":       {"icon": "🏒",  "provider": "MySportsFeeds"},
-    "UFC":       {"icon": "🥊",  "provider": "TheSportsDB"},
-    "Formula 1": {"icon": "🏎️", "provider": "TheSportsDB"},
-    "Tennis":    {"icon": "🎾",  "provider": "TheSportsDB"},
-    "Cricket":   {"icon": "🏏",  "provider": "TheSportsDB"},
-    "Golf":      {"icon": "⛳",  "provider": "TheSportsDB"},
+    # ── Legacy providers (+ FlashScore overlay when Apify key active)
+    "Soccer":       {"icon": "⚽",  "provider": "FlashScore/API-SPORTS"},
+    "NBA":          {"icon": "🏀",  "provider": "FlashScore/MySportsFeeds"},
+    "NFL":          {"icon": "🏈",  "provider": "FlashScore/MySportsFeeds"},
+    "MLB":          {"icon": "⚾",  "provider": "FlashScore/MySportsFeeds"},
+    "NHL":          {"icon": "🏒",  "provider": "FlashScore/MySportsFeeds"},
+    "UFC":          {"icon": "🥊",  "provider": "FlashScore/TheSportsDB"},
+    "Formula 1":    {"icon": "🏎️", "provider": "FlashScore/TheSportsDB"},
+    "Tennis":       {"icon": "🎾",  "provider": "FlashScore/TheSportsDB"},
+    "Cricket":      {"icon": "🏏",  "provider": "FlashScore/TheSportsDB"},
+    "Golf":         {"icon": "⛳",  "provider": "FlashScore/TheSportsDB"},
+    # ── FlashScore-native (daily global coverage)
+    "Volleyball":   {"icon": "🏐",  "provider": "FlashScore"},
+    "Handball":     {"icon": "🤾",  "provider": "FlashScore"},
+    "Rugby":        {"icon": "🏉",  "provider": "FlashScore"},
+    "Darts":        {"icon": "🎯",  "provider": "FlashScore"},
+    "Snooker":      {"icon": "🎱",  "provider": "FlashScore"},
+    "Table Tennis": {"icon": "🏓",  "provider": "FlashScore"},
+    "Esports":      {"icon": "🎮",  "provider": "FlashScore"},
 }
 STATUS_OPTIONS = ["ALL", "LIVE", "UPCOMING", "FINISHED"]
 SPORT_NAMES    = list(SPORT_OPTIONS.keys())
