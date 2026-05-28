@@ -58,12 +58,18 @@ class APIConfig:
     THESPORTSDB_KEY       = _clean(os.getenv("TheSportDB_API_key", "3"))
     THESPORTSDB_URL_V1    = "https://www.thesportsdb.com/api/v1/json"
 
+    APIFY_API_TOKEN       = _clean(os.getenv("APIFY_API_KEY", ""))
+    APIFY_BASE_URL        = "https://api.apify.com/v2/acts"
+    APIFY_ACTOR_LIVE      = "crawlerbros~flashscore-scraper"
+    APIFY_ACTOR_ALL_IN_ONE= "extractify-labs~flashscore-extractor"
+    APIFY_ACTOR_TENNIS    = "extractify-labs~flashscore-tennis-matches"
+
     # TTLs
     TTL_LIVE    = 30
     TTL_UPCOMING = 600
     TTL_LEAGUES  = 86400
 
-    REQUEST_TIMEOUT = 8
+    REQUEST_TIMEOUT = 12
     MAX_RETRIES     = 2
     RETRY_DELAY     = 0.4
 
@@ -572,6 +578,168 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
         {"id": "SUNSHINE",   "name": "Sunshine Tour",            "country": "South Africa"},
         {"id": "PGA_AUS",    "name": "PGA Tour of Australasia",  "country": "Australia"},
     ],
+    # ─────────────────────────────────────────────────────────────────────────
+    # VOLLEYBALL  — International + domestic leagues year-round
+    # ─────────────────────────────────────────────────────────────────────────
+    "Volleyball": [
+        {"id": "VB_ALL",     "name": "Volleyball — All Events",       "country": "World"},
+        {"id": "FIVB_WL",    "name": "FIVB Volleyball Nations League","country": "World"},
+        {"id": "FIVB_WC",    "name": "FIVB World Championship",       "country": "World"},
+        {"id": "FIVB_OLY",   "name": "Olympics — Volleyball",         "country": "World"},
+        {"id": "VB_CEV_CL",  "name": "CEV Champions League",          "country": "Europe"},
+        {"id": "VB_CEV_CC",  "name": "CEV Cup",                       "country": "Europe"},
+        {"id": "SUPERLIGA_IT","name": "SuperLega (Italy)",             "country": "Italy"},
+        {"id": "BUNDESLIGA_VB","name": "Bundesliga Volleyball",        "country": "Germany"},
+        {"id": "LIGUE_A",    "name": "Ligue A",                       "country": "France"},
+        {"id": "PLUSLIGA",   "name": "PlusLiga",                      "country": "Poland"},
+        {"id": "SUPERLIG_VB","name": "Efeler Ligi",                   "country": "Turkey"},
+        {"id": "SUPERLIGA_RU","name": "Superliga (Russia)",            "country": "Russia"},
+        {"id": "NBV_BR",     "name": "Superliga Nacional (Brazil)",   "country": "Brazil"},
+        {"id": "AVL_AUS",    "name": "AVL (Australia)",               "country": "Australia"},
+        {"id": "KOVO",       "name": "V-League (Korea)",              "country": "South Korea"},
+        {"id": "V1_JPN",     "name": "V1 League (Japan)",             "country": "Japan"},
+        {"id": "BVL_BR",     "name": "Beach Volleyball — World Tour", "country": "World"},
+        {"id": "AVP",        "name": "AVP Beach Volleyball",          "country": "USA"},
+    ],
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DARTS  — PDC, BDO and all major tournaments
+    # ─────────────────────────────────────────────────────────────────────────
+    "Darts": [
+        {"id": "DARTS_ALL",  "name": "Darts — All Events",            "country": "World"},
+        {"id": "PDC_WC",     "name": "PDC World Championship",        "country": "UK"},
+        {"id": "PDC_PL",     "name": "PDC Premier League Darts",      "country": "UK/Europe"},
+        {"id": "PDC_WM",     "name": "World Matchplay",               "country": "UK"},
+        {"id": "PDC_WGP",    "name": "World Grand Prix",              "country": "Ireland"},
+        {"id": "PDC_GC",     "name": "Grand Slam of Darts",           "country": "UK"},
+        {"id": "PDC_EC",     "name": "European Championship",         "country": "Europe"},
+        {"id": "PDC_WT",     "name": "PDC World Trophy",              "country": "World"},
+        {"id": "PDC_EURO",   "name": "European Tour",                 "country": "Europe"},
+        {"id": "PDC_UK_OPEN","name": "UK Open",                       "country": "UK"},
+        {"id": "PDC_MASTERS","name": "Masters",                       "country": "UK"},
+        {"id": "PDC_OPEN",   "name": "Players Championship",          "country": "UK"},
+        {"id": "PDC_WC_QL",  "name": "PDC World Cup of Darts",        "country": "Germany"},
+        {"id": "PDC_INT",    "name": "International Darts Open",      "country": "Germany"},
+        {"id": "WDF_WC",     "name": "WDF World Championship",        "country": "World"},
+        {"id": "PDC_CHALL",  "name": "PDC Challenge Tour",            "country": "UK"},
+        {"id": "PDC_SUPER",  "name": "Super Series",                  "country": "World"},
+    ],
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # SNOOKER  — All ranking events + invitational
+    # ─────────────────────────────────────────────────────────────────────────
+    "Snooker": [
+        {"id": "SNK_ALL",    "name": "Snooker — All Events",          "country": "World"},
+        {"id": "SNK_WC",     "name": "World Snooker Championship",    "country": "UK"},
+        {"id": "SNK_MASTERS","name": "Masters",                       "country": "UK"},
+        {"id": "SNK_UK",     "name": "UK Championship",               "country": "UK"},
+        {"id": "SNK_TOUR",   "name": "Tour Championship",             "country": "UK"},
+        {"id": "SNK_PLAYERS","name": "Players Championship",          "country": "UK"},
+        {"id": "SNK_CHINA",  "name": "Shanghai Masters",              "country": "China"},
+        {"id": "SNK_INT_CH", "name": "International Championship",    "country": "China"},
+        {"id": "SNK_WORLD_O","name": "World Open",                    "country": "China"},
+        {"id": "SNK_WELSH",  "name": "Welsh Open",                    "country": "Wales"},
+        {"id": "SNK_GERMAN", "name": "German Masters",                "country": "Germany"},
+        {"id": "SNK_SCOTTISH","name": "Scottish Open",                "country": "Scotland"},
+        {"id": "SNK_ENGLISH","name": "English Open",                  "country": "England"},
+        {"id": "SNK_HONG_K", "name": "Hong Kong Masters",             "country": "Hong Kong"},
+        {"id": "SNK_CHAMPION","name": "Champion of Champions",        "country": "UK"},
+        {"id": "SNK_SHOOT",  "name": "Shoot Out",                     "country": "UK"},
+        {"id": "SNK_PAUL_H", "name": "Paul Hunter Classic",           "country": "Germany"},
+        {"id": "SNK_RIGA",   "name": "Riga Masters",                  "country": "Latvia"},
+        {"id": "SNK_EURO",   "name": "European Masters",              "country": "Europe"},
+    ],
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # TABLE TENNIS  — ITTF World Tour + major leagues
+    # ─────────────────────────────────────────────────────────────────────────
+    "Table Tennis": [
+        {"id": "TT_ALL",     "name": "Table Tennis — All Events",     "country": "World"},
+        {"id": "WTT_CHAMP",  "name": "WTT Champions",                 "country": "World"},
+        {"id": "WTT_STAR",   "name": "WTT Star Contender",            "country": "World"},
+        {"id": "WTT_CONT",   "name": "WTT Contender",                 "country": "World"},
+        {"id": "ITTF_WC",    "name": "ITTF World Championship",       "country": "World"},
+        {"id": "ITTF_WT",    "name": "ITTF World Tour Grand Finals",  "country": "World"},
+        {"id": "TT_OLY",     "name": "Olympics — Table Tennis",       "country": "World"},
+        {"id": "TT_EURO_CH", "name": "European Championship",         "country": "Europe"},
+        {"id": "TT_ASIA_CH", "name": "Asian Championship",            "country": "Asia"},
+        {"id": "SUPER_LIGA", "name": "Superliga (Germany)",           "country": "Germany"},
+        {"id": "TT_BL",      "name": "Bundesliga TT",                 "country": "Germany"},
+        {"id": "TT_PRO_TOUR","name": "Pro Tour (China)",              "country": "China"},
+        {"id": "TT_CUP",     "name": "ITTF Team World Cup",           "country": "World"},
+        {"id": "TT_YOUTH",   "name": "ITTF World Youth Championship", "country": "World"},
+        {"id": "TT_MIXED",   "name": "Mixed Team World Championship", "country": "World"},
+    ],
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # HANDBALL  — EHF Champions League + all major leagues
+    # ─────────────────────────────────────────────────────────────────────────
+    "Handball": [
+        {"id": "HB_ALL",     "name": "Handball — All Events",         "country": "World"},
+        {"id": "EHF_CL",     "name": "EHF Champions League",          "country": "Europe"},
+        {"id": "EHF_EL",     "name": "EHF European League",           "country": "Europe"},
+        {"id": "EHF_CC",     "name": "EHF Cup",                       "country": "Europe"},
+        {"id": "IHF_WC",     "name": "IHF World Championship",        "country": "World"},
+        {"id": "HB_OLY",     "name": "Olympics — Handball",           "country": "World"},
+        {"id": "EHF_EURO",   "name": "EHF Euro Championship",         "country": "Europe"},
+        {"id": "BUNDES_HB",  "name": "Handball Bundesliga",           "country": "Germany"},
+        {"id": "LNH",        "name": "Lidl Starligue (France)",       "country": "France"},
+        {"id": "LIGA_ASOBAL","name": "Liga ASOBAL",                   "country": "Spain"},
+        {"id": "VELUX_DK",   "name": "Danish Handball League",        "country": "Denmark"},
+        {"id": "SHB",        "name": "Swedish Handbollsligan",        "country": "Sweden"},
+        {"id": "PICK_SZE",   "name": "Hungarian League",              "country": "Hungary"},
+        {"id": "SEHA",       "name": "SEHA League",                   "country": "Balkans"},
+        {"id": "HB_PLN",     "name": "PGNiG Superliga",               "country": "Poland"},
+        {"id": "IHF_W_WC",   "name": "IHF Women's World Championship","country": "World"},
+        {"id": "EHF_W_CL",   "name": "EHF Women's Champions League",  "country": "Europe"},
+    ],
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # RUGBY  — All codes: Union, League, Sevens
+    # ─────────────────────────────────────────────────────────────────────────
+    "Rugby": [
+        {"id": "RU_ALL",     "name": "Rugby Union — All Events",      "country": "World"},
+        {"id": "RWC",        "name": "Rugby World Cup",               "country": "World"},
+        {"id": "SIX_NATIONS","name": "Six Nations Championship",      "country": "Europe"},
+        {"id": "THE_RUGBY_CH","name": "The Rugby Championship",       "country": "S. Hemisphere"},
+        {"id": "URC",        "name": "United Rugby Championship",     "country": "Europe/Africa"},
+        {"id": "PREMIERSHIP","name": "Gallagher Premiership",         "country": "England"},
+        {"id": "TOP_14",     "name": "Top 14",                        "country": "France"},
+        {"id": "SUPER_RUGBY","name": "Super Rugby Pacific",           "country": "Oceania/Asia"},
+        {"id": "PRO_D2",     "name": "Pro D2",                        "country": "France"},
+        {"id": "CURRIE_CUP", "name": "Currie Cup",                    "country": "South Africa"},
+        {"id": "RUGBYEURO",  "name": "Rugby Europe Championship",     "country": "Europe"},
+        {"id": "HSBC_SEVENS","name": "HSBC World Rugby Sevens Series","country": "World"},
+        {"id": "RU_OLY",     "name": "Olympics — Rugby Sevens",       "country": "World"},
+        {"id": "NRL",        "name": "NRL (Rugby League)",            "country": "Australia"},
+        {"id": "SL_RL",      "name": "Super League (Rugby League)",   "country": "UK"},
+        {"id": "RL_WC",      "name": "Rugby League World Cup",        "country": "World"},
+        {"id": "STATE_ORIGIN","name": "State of Origin",              "country": "Australia"},
+        {"id": "CH_CUP",     "name": "Challenge Cup (Rugby League)",  "country": "UK"},
+    ],
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # ESPORTS  — Fastest growing betting market
+    # ─────────────────────────────────────────────────────────────────────────
+    "Esports": [
+        {"id": "ES_ALL",     "name": "Esports — All Events",          "country": "World"},
+        {"id": "LOL_WC",     "name": "League of Legends World Championship","country": "World"},
+        {"id": "LOL_LCK",    "name": "LCK (Korea)",                   "country": "South Korea"},
+        {"id": "LOL_LPL",    "name": "LPL (China)",                   "country": "China"},
+        {"id": "LOL_LEC",    "name": "LEC (Europe)",                  "country": "Europe"},
+        {"id": "LOL_LCS",    "name": "LCS (North America)",           "country": "USA"},
+        {"id": "DOTA_TI",    "name": "Dota 2 — The International",    "country": "World"},
+        {"id": "DOTA_DPC",   "name": "Dota Pro Circuit",              "country": "World"},
+        {"id": "CS_MAJOR",   "name": "CS2 Major Championship",        "country": "World"},
+        {"id": "CS_ESL",     "name": "ESL Pro League (CS2)",          "country": "World"},
+        {"id": "VALORANT_WC","name": "Valorant Champions",            "country": "World"},
+        {"id": "VALORANT_VCT","name": "VCT International League",     "country": "World"},
+        {"id": "OVERWATCH_L","name": "Overwatch League",              "country": "World"},
+        {"id": "ROCKET_RLCS","name": "Rocket League Championship",    "country": "World"},
+        {"id": "FIFA_EWWC",  "name": "EA Sports FC World Cup",        "country": "World"},
+        {"id": "COD_CDL",    "name": "Call of Duty League",           "country": "World"},
+        {"id": "STARCRAFT",  "name": "StarCraft II — GSL",            "country": "South Korea"},
+    ],
 }
 
 
@@ -982,6 +1150,205 @@ class TheSportsDBProvider(DataProvider):
         return matches
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FLASHSCORE PROVIDER via Apify  — 30+ sports, daily live coverage
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Maps Empire sport names → FlashScore sport slugs used by Apify actors
+FS_SPORT_MAP = {
+    "Soccer":       "football",
+    "NBA":          "basketball",
+    "NFL":          "american-football",
+    "MLB":          "baseball",
+    "NHL":          "hockey",
+    "Tennis":       "tennis",
+    "Cricket":      "cricket",
+    "Rugby":        "rugby",
+    "Volleyball":   "volleyball",
+    "Handball":     "handball",
+    "Table Tennis": "table-tennis",
+    "Snooker":      "snooker",
+    "Darts":        "darts",
+    "Esports":      "esports",
+    "Golf":         "golf",
+    "Formula 1":    "motorsport",
+    "UFC":          "mma",
+}
+
+
+class FlashScoreProvider(DataProvider):
+    """
+    Fetches live and upcoming matches from FlashScore via Apify actors.
+    Uses synchronous run-and-get pattern for simplicity.
+    Falls back gracefully if Apify token is missing or actor fails.
+    """
+
+    def __init__(self):
+        super().__init__("FlashScore/Apify")
+        self.token    = APIConfig.APIFY_API_TOKEN
+        self.base_url = APIConfig.APIFY_BASE_URL
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.token)
+
+    def _run_actor(self, actor_id: str, input_data: Dict,
+                   timeout_secs: int = 60) -> Optional[List]:
+        """Run an Apify actor synchronously and return dataset items."""
+        if not self.ok:
+            return None
+        url = f"{self.base_url}/{actor_id}/run-sync-get-dataset-items"
+        try:
+            r = requests.post(
+                url,
+                params={"token": self.token, "timeout": timeout_secs},
+                json=input_data,
+                timeout=timeout_secs + 5,
+            )
+            if r.status_code == 200:
+                items = r.json()
+                return items if isinstance(items, list) else items.get("items", [])
+            logger.warning(f"[Apify] HTTP {r.status_code}: {r.text[:150]}")
+            return None
+        except Exception as e:
+            logger.error(f"[Apify] Actor run error: {e}")
+            return None
+
+    def get_live_matches(self, sport: str) -> List[Match]:
+        if not self.ok:
+            return []
+        fs_sport = FS_SPORT_MAP.get(sport, "football")
+        ck = self._ck("fs_live", sport)
+        cached = self._get(ck, APIConfig.TTL_LIVE)
+        if cached is not None:
+            return cached
+
+        items = self._run_actor(
+            APIConfig.APIFY_ACTOR_LIVE,
+            {"sport": fs_sport, "liveOnly": True, "maxItems": 200},
+            timeout_secs=45,
+        )
+        matches = self._parse_items(items or [], sport, status_filter="live")
+        self._set(ck, matches)
+        return matches
+
+    def get_upcoming_matches(self, sport: str) -> List[Match]:
+        if not self.ok:
+            return []
+        fs_sport = FS_SPORT_MAP.get(sport, "football")
+        ck = self._ck("fs_upcoming", sport)
+        cached = self._get(ck, APIConfig.TTL_UPCOMING)
+        if cached is not None:
+            return cached
+
+        items = self._run_actor(
+            APIConfig.APIFY_ACTOR_LIVE,
+            {"sport": fs_sport, "liveOnly": False, "maxItems": 300},
+            timeout_secs=55,
+        )
+        matches = self._parse_items(items or [], sport, status_filter="upcoming")
+        self._set(ck, matches)
+        return matches
+
+    def get_all_today(self, sport: str) -> List[Match]:
+        """Fetch both live and upcoming in one call."""
+        if not self.ok:
+            return []
+        fs_sport = FS_SPORT_MAP.get(sport, "football")
+        ck = self._ck("fs_today", sport)
+        cached = self._get(ck, APIConfig.TTL_LIVE)
+        if cached is not None:
+            return cached
+
+        items = self._run_actor(
+            APIConfig.APIFY_ACTOR_LIVE,
+            {"sport": fs_sport, "liveOnly": False, "maxItems": 500},
+            timeout_secs=60,
+        )
+        matches = self._parse_items(items or [], sport)
+        self._set(ck, matches)
+        return matches
+
+    def _parse_items(self, items: List[Dict], sport: str,
+                     status_filter: str = None) -> List[Match]:
+        matches = []
+        for item in items:
+            # FlashScore Apify actors return varying schemas; handle both
+            home  = (item.get("homeTeam")   or item.get("home_team")   or
+                     item.get("homeName")   or item.get("home")        or "TBD")
+            away  = (item.get("awayTeam")   or item.get("away_team")   or
+                     item.get("awayName")   or item.get("away")        or "TBD")
+            league = (item.get("tournament") or item.get("league")      or
+                      item.get("competition")or item.get("tournamentName") or sport)
+            match_id = (item.get("id")       or item.get("matchId")    or
+                        item.get("match_id") or str(hash(f"{home}{away}{league}")))
+            raw_status = (item.get("status")  or item.get("matchStatus") or
+                          item.get("state")   or "SCHEDULED")
+            su = str(raw_status).upper()
+
+            is_live   = any(x in su for x in [
+                "LIVE", "1H", "2H", "HT", "IN_PLAY", "INPROGRESS",
+                "ONGOING", "PROGRESS", "1ST", "2ND", "3RD", "4TH"
+            ])
+            is_done   = any(x in su for x in [
+                "FINISHED", "FT", "FINAL", "ENDED", "COMPLETE",
+                "COMPLETED", "AET", "AP", "PEN"
+            ])
+
+            if status_filter == "live"     and not is_live: continue
+            if status_filter == "upcoming" and (is_live or is_done): continue
+
+            # Parse start time
+            start = None
+            for key in ("startTime", "start_time", "kickoff", "date",
+                        "scheduledTime", "matchTime", "datetime"):
+                raw = item.get(key, "")
+                if raw:
+                    try:
+                        if isinstance(raw, (int, float)):
+                            start = datetime.utcfromtimestamp(raw / 1000
+                                    if raw > 1e10 else raw)
+                        else:
+                            start = datetime.fromisoformat(
+                                str(raw).replace("Z", "+00:00")
+                            )
+                        break
+                    except Exception:
+                        pass
+
+            # Parse scores
+            home_score = _toint(
+                item.get("homeScore") or item.get("home_score") or
+                item.get("score", {}).get("home") if isinstance(item.get("score"), dict) else None
+            )
+            away_score = _toint(
+                item.get("awayScore") or item.get("away_score") or
+                item.get("score", {}).get("away") if isinstance(item.get("score"), dict) else None
+            )
+
+            if is_live:
+                display_status = "LIVE"
+            elif is_done:
+                display_status = "FINISHED"
+            else:
+                display_status = "SCHEDULED"
+
+            matches.append(Match(
+                match_id    = str(match_id),
+                provider    = "FlashScore",
+                league      = str(league),
+                league_id   = str(item.get("tournamentId") or item.get("leagueId") or ""),
+                home_team   = str(home),
+                away_team   = str(away),
+                home_score  = home_score,
+                away_score  = away_score,
+                status      = display_status,
+                start_time  = start,
+                country     = item.get("country") or item.get("countryName") or "",
+            ))
+        return matches
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -997,11 +1364,21 @@ def _toint(v) -> Optional[int]:
 # EMPIRE DATA ROUTER
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# All sports supported by FlashScore provider
+FLASHSCORE_SPORTS = set(FS_SPORT_MAP.keys())
+
+# Sports with dedicated legacy providers (used as primary when FS unavailable)
+LEGACY_SOCCER  = {"Soccer"}
+LEGACY_US      = {"NBA", "NFL", "MLB", "NHL"}
+LEGACY_MISC    = {"UFC", "Formula 1", "Tennis", "Cricket", "Golf"}
+
+
 class EmpireDataRouter:
     def __init__(self):
         self.api_sports      = APISportsProvider()
         self.my_sports_feeds = MySportsFeedsProvider()
         self.the_sports_db   = TheSportsDBProvider()
+        self.flashscore      = FlashScoreProvider()
         self.connection_log: List[Dict] = []
         self._log_initial_status()
 
@@ -1015,11 +1392,12 @@ class EmpireDataRouter:
 
     def _log_initial_status(self):
         checks = [
-            ("API-SPORTS",    bool(APIConfig.API_SPORTS_KEY),    "Soccer live data"),
-            ("MySportsFeeds", bool(APIConfig.MYSPORTSFEEDS_KEY), "NBA/NFL/MLB/NHL data"),
-            ("TheSportsDB",   True,                               "UFC/F1/Tennis/Cricket/Golf"),
-            ("TheOddsAPI",    bool(APIConfig.ODDS_API_KEY),       "Odds data"),
-            ("Football-Data", bool(APIConfig.FOOTBALL_DATA_KEY),  "Soccer backup"),
+            ("FlashScore/Apify", bool(APIConfig.APIFY_API_TOKEN),   "30+ sports daily live"),
+            ("API-SPORTS",       bool(APIConfig.API_SPORTS_KEY),     "Soccer live data"),
+            ("MySportsFeeds",    bool(APIConfig.MYSPORTSFEEDS_KEY),  "NBA/NFL/MLB/NHL data"),
+            ("TheSportsDB",      True,                                "UFC/F1/Tennis/Cricket/Golf"),
+            ("TheOddsAPI",       bool(APIConfig.ODDS_API_KEY),        "Odds data"),
+            ("Football-Data",    bool(APIConfig.FOOTBALL_DATA_KEY),   "Soccer backup"),
         ]
         for name, active, detail in checks:
             self._log(name, "READY" if active else "NOT CONFIGURED", detail)
@@ -1031,6 +1409,8 @@ class EmpireDataRouter:
 
     def get_provider_status(self) -> List[Dict]:
         return [
+            {"name": "FlashScore (Apify)",
+             "status": "🟢 ONLINE" if APIConfig.APIFY_API_TOKEN else "⚪ NOT CONFIGURED"},
             {"name": "API-SPORTS",
              "status": "🟢 ONLINE" if APIConfig.API_SPORTS_KEY else "⚪ NOT CONFIGURED"},
             {"name": "MySportsFeeds",
@@ -1072,51 +1452,65 @@ class EmpireDataRouter:
 
         return static
 
-    # ── Live matches  ─────────────────────────────────────────────────────────
+    # ── Live matches — FlashScore primary, legacy fallback ───────────────────
     def get_live_matches(self, sport_type: str, league_id: str = None) -> pd.DataFrame:
+        matches = []
         try:
-            if sport_type == "Soccer":
-                matches = self.api_sports.get_live_matches(league_id)
-                self._log("API-SPORTS", "SUCCESS" if matches else "EMPTY",
-                          f"{len(matches)} live soccer")
-            elif sport_type in ("NBA", "NFL", "MLB", "NHL"):
-                matches = self.my_sports_feeds.get_live_matches(sport_type)
-                self._log("MySportsFeeds", "SUCCESS" if matches else "EMPTY",
+            # PRIMARY: FlashScore via Apify (covers all 30+ sports)
+            if self.flashscore.ok and sport_type in FLASHSCORE_SPORTS:
+                matches = self.flashscore.get_live_matches(sport_type)
+                self._log("FlashScore", "SUCCESS" if matches else "EMPTY",
                           f"{len(matches)} live {sport_type}")
-            elif sport_type in ("UFC", "Formula 1", "Tennis", "Cricket", "Golf"):
-                matches = self.the_sports_db.get_live_matches(sport_type)
-                self._log("TheSportsDB", "SUCCESS" if matches else "EMPTY",
-                          f"{len(matches)} live {sport_type}")
-            else:
-                return pd.DataFrame()
 
-            return pd.DataFrame([m.to_dataframe_row() for m in matches]) if matches else pd.DataFrame()
+            # FALLBACK / SUPPLEMENT: Legacy providers
+            if not matches:
+                if sport_type in LEGACY_SOCCER:
+                    matches = self.api_sports.get_live_matches(league_id)
+                    self._log("API-SPORTS", "FALLBACK",
+                              f"{len(matches)} live soccer")
+                elif sport_type in LEGACY_US:
+                    matches = self.my_sports_feeds.get_live_matches(sport_type)
+                    self._log("MySportsFeeds", "FALLBACK",
+                              f"{len(matches)} live {sport_type}")
+                elif sport_type in LEGACY_MISC:
+                    matches = self.the_sports_db.get_live_matches(sport_type)
+                    self._log("TheSportsDB", "FALLBACK",
+                              f"{len(matches)} live {sport_type}")
+
         except Exception as e:
             self._log("ROUTER", "ERROR", f"live {sport_type}: {e}")
-            return pd.DataFrame()
 
-    # ── Upcoming matches  ─────────────────────────────────────────────────────
+        return pd.DataFrame([m.to_dataframe_row() for m in matches]) if matches else pd.DataFrame()
+
+    # ── Upcoming matches — FlashScore primary, legacy fallback ───────────────
     def get_upcoming_matches(self, sport_type: str) -> pd.DataFrame:
+        matches = []
         try:
-            if sport_type == "Soccer":
-                matches = self.api_sports.get_upcoming_matches()
-                self._log("API-SPORTS", "SUCCESS" if matches else "EMPTY",
-                          f"{len(matches)} upcoming soccer")
-            elif sport_type in ("NBA", "NFL", "MLB", "NHL"):
-                matches = self.my_sports_feeds.get_upcoming_matches(sport_type)
-                self._log("MySportsFeeds", "SUCCESS" if matches else "EMPTY",
+            # PRIMARY: FlashScore via Apify
+            if self.flashscore.ok and sport_type in FLASHSCORE_SPORTS:
+                matches = self.flashscore.get_upcoming_matches(sport_type)
+                self._log("FlashScore", "SUCCESS" if matches else "EMPTY",
                           f"{len(matches)} upcoming {sport_type}")
-            elif sport_type in ("UFC", "Formula 1", "Tennis", "Cricket", "Golf"):
-                matches = self.the_sports_db.get_upcoming_matches(sport_type)
-                self._log("TheSportsDB", "SUCCESS" if matches else "EMPTY",
-                          f"{len(matches)} upcoming {sport_type}")
-            else:
-                return pd.DataFrame()
 
-            return pd.DataFrame([m.to_dataframe_row() for m in matches]) if matches else pd.DataFrame()
+            # FALLBACK
+            if not matches:
+                if sport_type in LEGACY_SOCCER:
+                    matches = self.api_sports.get_upcoming_matches()
+                    self._log("API-SPORTS", "FALLBACK",
+                              f"{len(matches)} upcoming soccer")
+                elif sport_type in LEGACY_US:
+                    matches = self.my_sports_feeds.get_upcoming_matches(sport_type)
+                    self._log("MySportsFeeds", "FALLBACK",
+                              f"{len(matches)} upcoming {sport_type}")
+                elif sport_type in LEGACY_MISC:
+                    matches = self.the_sports_db.get_upcoming_matches(sport_type)
+                    self._log("TheSportsDB", "FALLBACK",
+                              f"{len(matches)} upcoming {sport_type}")
+
         except Exception as e:
             self._log("ROUTER", "ERROR", f"upcoming {sport_type}: {e}")
-            return pd.DataFrame()
+
+        return pd.DataFrame([m.to_dataframe_row() for m in matches]) if matches else pd.DataFrame()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1130,7 +1524,8 @@ class EmpireDashboardData:
     @property
     def is_live(self) -> bool:
         return bool(
-            APIConfig.API_SPORTS_KEY
+            APIConfig.APIFY_API_TOKEN
+            or APIConfig.API_SPORTS_KEY
             or APIConfig.MYSPORTSFEEDS_KEY
             or APIConfig.THESPORTSDB_KEY
         )
