@@ -50,7 +50,7 @@ if "last_refresh" not in st.session_state:
 # ══════════════════════════════════════════════════════════════════════════════
 # CSS
 # ══════════════════════════════════════════════════════════════════════════════
-st.html("""
+st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap');
 .stApp{background:linear-gradient(180deg,#0a0a0f 0%,#12121a 50%,#0d0d14 100%);font-family:'Rajdhani',sans-serif;}
@@ -94,7 +94,7 @@ st.html("""
 [data-testid="stMetricValue"]{color:#FFD700 !important;font-family:'Orbitron',sans-serif;font-weight:900;font-size:2rem;}
 [data-testid="stMetricLabel"]{color:#888 !important;font-family:'Rajdhani',sans-serif;font-weight:500;letter-spacing:2px;text-transform:uppercase;}
 </style>
-""")
+""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SPORT CONFIG
