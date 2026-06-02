@@ -144,9 +144,13 @@ _init_state()
 # ══════════════════════════════════════════════════════════════════════════════
 def _clear_all_caches():
     st.session_state.last_refresh = time.time()
+    # Clear Streamlit's function cache
+    st.cache_data.clear()
+    # Clear provider in-memory caches
     for provider in [data.router.api_sports,
                      data.router.my_sports_feeds,
-                     data.router.the_sports_db]:
+                     data.router.the_sports_db,
+                     data.router.flashscore]:
         provider.cache.clear()
 
 
@@ -392,27 +396,53 @@ def _status_style(status: str):
     return "#FFAA00", "rgba(255,170,0,.15)", "UPCOMING"
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def _fetch_live(_data_key: str, sport: str, league_id: str) -> pd.DataFrame:
+    """Cached live match fetch — refreshes every 30s, never blocks UI."""
+    try:
+        return st.session_state.empire_data.get_live_matches_df(
+            sport, None if league_id == "ALL" else league_id
+        )
+    except Exception as e:
+        logger.error(f"_fetch_live: {e}")
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_upcoming(_data_key: str, sport: str) -> pd.DataFrame:
+    """Cached upcoming match fetch — refreshes every 5 min."""
+    try:
+        return st.session_state.empire_data.get_upcoming_matches_df(sport)
+    except Exception as e:
+        logger.error(f"_fetch_upcoming: {e}")
+        return pd.DataFrame()
+
+
 def _fetch_matches(sport: str, league_id: str, status: str) -> pd.DataFrame:
+    # Cache key changes every 30s for live, 5min for upcoming
+    live_key     = str(int(time.time() // 30))
+    upcoming_key = str(int(time.time() // 300))
     try:
         if status == "LIVE":
-            df = data.get_live_matches_df(sport, None if league_id == "ALL" else league_id)
+            df = _fetch_live(live_key, sport, league_id)
         elif status in ("UPCOMING", "SCHEDULED"):
-            df = data.get_upcoming_matches_df(sport)
+            df = _fetch_upcoming(upcoming_key, sport)
         elif status == "FINISHED":
             df = pd.DataFrame()
-        else:
-            live_df     = data.get_live_matches_df(sport, None if league_id == "ALL" else league_id)
-            upcoming_df = data.get_upcoming_matches_df(sport)
+        else:  # ALL — combine live + upcoming
+            live_df     = _fetch_live(live_key, sport, league_id)
+            upcoming_df = _fetch_upcoming(upcoming_key, sport)
             parts = [d for d in [live_df, upcoming_df] if not d.empty]
             df    = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
+        # Filter by specific league if selected
         if league_id != "ALL" and not df.empty and "LEAGUE" in df.columns:
             mask     = df["LEAGUE"].astype(str).str.contains(league_id, case=False, na=False)
             filtered = df[mask]
             if not filtered.empty:
                 df = filtered
     except Exception as e:
-        logger.exception(f"_fetch_matches error: {e}")
+        logger.error(f"_fetch_matches: {e}")
         df = pd.DataFrame()
     return df
 
@@ -685,10 +715,22 @@ def render_arena(sport: str, league_id: str, status: str):
         return
 
     icon = SPORT_OPTIONS.get(sport, {}).get("icon", "🏆")
+    provider = SPORT_OPTIONS.get(sport, {}).get("provider", "")
     st.markdown(
         f'<div class="section-header">{icon} EMPIRE ARENA — {sport.upper()}</div>',
         unsafe_allow_html=True,
     )
+
+    # Show provider badge
+    fs_online = data.router.flashscore.ok
+    badge_color = "#00ff88" if fs_online else "#FFD700"
+    badge_text  = f"FlashScore LIVE" if fs_online else "Legacy Provider"
+    st.markdown(
+        f'<div style="color:{badge_color};font-family:Orbitron;font-size:.7rem;'
+        f'margin-bottom:10px;">📡 {badge_text} | {provider}</div>',
+        unsafe_allow_html=True,
+    )
+
     df = _fetch_matches(sport, league_id, status)
     render_match_cards(df, sport)
 
