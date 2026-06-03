@@ -131,7 +131,7 @@ def _init_state():
     for k, v in {
         "selected_sport":     SPORT_NAMES[0],
         "selected_league_id": "ALL",
-        "selected_status":    "ALL",
+        "selected_status":    "UPCOMING",
     }.items():
         if k not in st.session_state:
             st.session_state[k] = v
@@ -549,11 +549,20 @@ def render_prediction_card(pred: MatchPrediction):
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        st.info(
-            f"No {sport} matches found right now. "
-            "This may be off-season or between fixtures. "
-            "Try changing the Status filter or refreshing."
-        )
+        fs_ok = st.session_state.empire_data.router.flashscore.ok
+        if fs_ok:
+            st.warning(
+                f"⏳ **No {sport} matches returned yet.**\n\n"
+                "FlashScore via Apify may need a moment to complete its first run. "
+                "**Click 🔄 REFRESH DATA** in the sidebar to trigger a fresh fetch. "
+                "Subsequent loads will be instant from cache."
+            )
+        else:
+            st.info(
+                f"No {sport} matches found. "
+                "Check that APIFY_API_KEY and sport API keys are set in Render → "
+                "Settings → Environment Variables."
+            )
         return
 
     st.markdown(
@@ -714,24 +723,32 @@ def render_arena(sport: str, league_id: str, status: str):
         render_match_detail()
         return
 
-    icon = SPORT_OPTIONS.get(sport, {}).get("icon", "🏆")
+    icon     = SPORT_OPTIONS.get(sport, {}).get("icon", "🏆")
     provider = SPORT_OPTIONS.get(sport, {}).get("provider", "")
     st.markdown(
         f'<div class="section-header">{icon} EMPIRE ARENA — {sport.upper()}</div>',
         unsafe_allow_html=True,
     )
 
-    # Show provider badge
-    fs_online = data.router.flashscore.ok
+    # Provider + status badge
+    fs_online   = data.router.flashscore.ok
     badge_color = "#00ff88" if fs_online else "#FFD700"
-    badge_text  = f"FlashScore LIVE" if fs_online else "Legacy Provider"
+    badge_text  = "FlashScore LIVE" if fs_online else "Legacy Provider"
     st.markdown(
         f'<div style="color:{badge_color};font-family:Orbitron;font-size:.7rem;'
         f'margin-bottom:10px;">📡 {badge_text} | {provider}</div>',
         unsafe_allow_html=True,
     )
 
-    df = _fetch_matches(sport, league_id, status)
+    # Show spinner while Apify run-sync is in progress (can take up to 55s first call)
+    spinner_msg = (
+        f"⚡ Fetching {sport} matches from FlashScore..."
+        if fs_online else
+        f"📡 Fetching {sport} matches..."
+    )
+    with st.spinner(spinner_msg):
+        df = _fetch_matches(sport, league_id, status)
+
     render_match_cards(df, sport)
 
 
