@@ -1152,8 +1152,14 @@ class TheSportsDBProvider(DataProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FLASHSCORE PROVIDER via Apify  — 30+ sports, instant cached responses
+# FLASHSCORE / SOFASCORE PROVIDER via Apify
+# Primary:  extractify-labs/flashscore-extractor  (football + basketball)
+# Secondary: parseforge/sofascore-live-scraper     (13 sports, seconds per run)
+# Tertiary:  crawlerbros/flashscore-scraper        (URL-based, 30+ sports)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# Sport → Apify actor + correct input schema
+# Each entry: (actor_slug, input_builder_fn)
 
 FS_SPORT_MAP = {
     "Soccer":       "football",
@@ -1175,6 +1181,49 @@ FS_SPORT_MAP = {
     "UFC":          "mma",
 }
 
+# FlashScore sport slugs for URL-based actor
+FS_URL_MAP = {
+    "Soccer":       "https://www.flashscore.com/football/",
+    "NBA":          "https://www.flashscore.com/basketball/",
+    "NFL":          "https://www.flashscore.com/american-football/",
+    "MLB":          "https://www.flashscore.com/baseball/",
+    "NHL":          "https://www.flashscore.com/hockey/",
+    "Tennis":       "https://www.flashscore.com/tennis/",
+    "Cricket":      "https://www.flashscore.com/cricket/",
+    "Rugby":        "https://www.flashscore.com/rugby-union/",
+    "Volleyball":   "https://www.flashscore.com/volleyball/",
+    "Handball":     "https://www.flashscore.com/handball/",
+    "Table Tennis": "https://www.flashscore.com/table-tennis/",
+    "Snooker":      "https://www.flashscore.com/snooker/",
+    "Darts":        "https://www.flashscore.com/darts/",
+    "Esports":      "https://www.flashscore.com/esports/",
+    "Golf":         "https://www.flashscore.com/golf/",
+    "Formula 1":    "https://www.flashscore.com/motorsport/",
+    "UFC":          "https://www.flashscore.com/mma/",
+}
+
+# SofaScore sport slugs (for parseforge actor)
+SOFA_SPORT_MAP = {
+    "Soccer":       "football",
+    "NBA":          "basketball",
+    "NFL":          "american-football",
+    "MLB":          "baseball",
+    "NHL":          "ice-hockey",
+    "Tennis":       "tennis",
+    "Cricket":      "cricket",
+    "Rugby":        "rugby",
+    "Volleyball":   "volleyball",
+    "Handball":     "handball",
+    "Table Tennis": "table-tennis",
+    "Esports":      "esports",
+    "UFC":          "mma",
+}
+
+# Verified Apify actor IDs
+ACTOR_FLASHSCORE_EXTRACTOR = "extractify-labs~flashscore-extractor"   # football+basketball, dayOffsets input
+ACTOR_SOFASCORE            = "parseforge~sofascore-live-scraper"       # 13 sports, date input, fastest
+ACTOR_FLASHSCORE_URL       = "crawlerbros~flashscore-scraper"          # URL-based, 30+ sports
+
 # FlashScore actual status strings → normalised
 FS_STATUS_LIVE = {
     "1st half", "2nd half", "halftime", "half time", "extra time",
@@ -1187,89 +1236,106 @@ FS_STATUS_LIVE = {
 FS_STATUS_DONE = {
     "finished", "ft", "final", "ended", "complete", "completed",
     "aet", "ap", "after penalties", "after extra time",
-    "walkover", "retired", "abandoned", "awarded",
+    "walkover", "retired", "abandoned", "awarded", "closed",
 }
 FS_STATUS_SKIP = {"cancelled", "canceled", "postponed", "suspended", "deleted"}
-
-# Best available Apify actor — run-sync with sport input
-APIFY_ACTOR_ID = "mgml2y26whpqzinhi"  # crawlerbros/flashscore-scraper canonical ID
 
 
 class FlashScoreProvider(DataProvider):
     """
-    FlashScore data via Apify — run-sync per sport with in-memory cache.
+    Multi-actor Apify provider for live sports data.
 
-    Strategy:
-    - run-sync-get-dataset-items: starts actor, waits max 55s, returns data
-    - Results cached 30s (live) so repeat renders are instant
-    - Background thread pre-warms priority sports on startup
-    - Fully parses FlashScore's actual output schema (nested tournament obj,
-      Unix timestamps, verbose status strings like "1st Half", "Finished")
+    Priority order per sport:
+    1. extractify-labs/flashscore-extractor  — football & basketball (dayOffsets=[0])
+    2. parseforge/sofascore-live-scraper     — 13 sports (date=today)
+    3. crawlerbros/flashscore-scraper        — URL-based fallback, 30+ sports
     """
 
-    # Priority sports to pre-warm on startup
-    PRIORITY_SPORTS = ["Soccer", "Tennis", "Basketball", "Cricket"]
+    PRIORITY_SPORTS = ["Soccer", "Tennis", "NBA", "Cricket", "NFL", "MLB", "NHL"]
 
     def __init__(self):
         super().__init__("FlashScore/Apify")
-        self.token    = APIConfig.APIFY_API_TOKEN
+        self.token = APIConfig.APIFY_API_TOKEN
         self._prefetch_started = False
 
     @property
     def ok(self) -> bool:
         return bool(self.token)
 
-    # ── Run actor synchronously (correct approach — passes sport as input) ────
-    def _run_sync(self, sport: str, live_only: bool = False,
-                  max_items: int = 300) -> Optional[List]:
-        """Run actor with sport input and return items. Timeout 55s."""
+    # ── Core Apify caller ─────────────────────────────────────────────────────
+    def _call_actor(self, actor_id: str, input_data: Dict,
+                    timeout: int = 60) -> Optional[List]:
         if not self.ok:
             return None
-        fs_sport = FS_SPORT_MAP.get(sport, "football")
-        url = f"https://api.apify.com/v2/acts/{APIFY_ACTOR_ID}/run-sync-get-dataset-items"
+        url = f"https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items"
         try:
             r = requests.post(
                 url,
-                params={"token": self.token, "timeout": 55, "memory": 256},
-                json={
-                    "sport":    fs_sport,
-                    "liveOnly": live_only,
-                    "maxItems": max_items,
-                    "days":     0,   # today only
-                },
-                timeout=60,
+                params={"token": self.token, "timeout": timeout, "memory": 256},
+                json=input_data,
+                timeout=timeout + 8,
             )
             if r.status_code == 200:
-                items = r.json()
-                return items if isinstance(items, list) else []
-            logger.warning(f"[Apify run-sync] HTTP {r.status_code}: {r.text[:120]}")
+                result = r.json()
+                return result if isinstance(result, list) else result.get("items", [])
+            logger.warning(f"[Apify {actor_id}] HTTP {r.status_code}: {r.text[:150]}")
             return None
         except requests.exceptions.Timeout:
-            logger.warning(f"[Apify run-sync] Timeout for {sport}")
+            logger.warning(f"[Apify {actor_id}] Timeout for input: {str(input_data)[:80]}")
             return None
         except Exception as e:
-            logger.error(f"[Apify run-sync] {sport}: {e}")
+            logger.error(f"[Apify {actor_id}] {e}")
             return None
 
-    # ── Background trigger (fire-and-forget refresh) ──────────────────────────
-    def _trigger_refresh(self, sport: str):
-        """Trigger a new run in background so next cache miss gets fresh data."""
-        if not self.ok:
-            return
-        def _run():
-            try:
-                fs_sport = FS_SPORT_MAP.get(sport, "football")
-                requests.post(
-                    f"https://api.apify.com/v2/acts/{APIFY_ACTOR_ID}/runs",
-                    params={"token": self.token},
-                    json={"sport": fs_sport, "maxItems": 300, "days": 0},
-                    timeout=5,
-                )
-            except Exception:
-                pass
-        threading.Thread(target=_run, daemon=True).start()
+    # ── Strategy 1: extractify-labs extractor (football + basketball) ─────────
+    def _fetch_via_extractor(self, sport: str) -> Optional[List]:
+        """Uses dayOffsets=[0] for today's matches. Correct input schema."""
+        if sport not in ("Soccer", "NBA"):
+            return None
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self._call_actor(
+            ACTOR_FLASHSCORE_EXTRACTOR,
+            {
+                "dayOffsets":    [0],          # today only
+                "matchStatuses": ["all"],       # live + scheduled + finished
+                "sport":         "football" if sport == "Soccer" else "basketball",
+            },
+            timeout=55,
+        )
 
-    # ── Pre-warm priority sports on startup ───────────────────────────────────
+    # ── Strategy 2: SofaScore actor (13 sports, fastest) ─────────────────────
+    def _fetch_via_sofascore(self, sport: str) -> Optional[List]:
+        """Uses date=today. Works for 13 sports. Usually completes in <10s."""
+        sofa_sport = SOFA_SPORT_MAP.get(sport)
+        if not sofa_sport:
+            return None
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self._call_actor(
+            ACTOR_SOFASCORE,
+            {
+                "sport": sofa_sport,
+                "date":  today,
+                "mode":  "live-scores",
+            },
+            timeout=30,
+        )
+
+    # ── Strategy 3: URL-based scraper (30+ sports fallback) ──────────────────
+    def _fetch_via_url_scraper(self, sport: str) -> Optional[List]:
+        """Uses FlashScore sport URL as input. Correct schema for crawlerbros actor."""
+        url = FS_URL_MAP.get(sport)
+        if not url:
+            return None
+        return self._call_actor(
+            ACTOR_FLASHSCORE_URL,
+            {
+                "startUrls": [{"url": url}],
+                "maxItems":  300,
+            },
+            timeout=60,
+        )
+
+    # ── Background pre-warm ───────────────────────────────────────────────────
     def prefetch_all(self):
         if not self.ok or self._prefetch_started:
             return
@@ -1279,26 +1345,44 @@ class FlashScoreProvider(DataProvider):
                 try:
                     self._fetch_sport(sport)
                     logger.info(f"[Apify prefetch] {sport} warmed")
-                    time.sleep(2)
+                    time.sleep(1)
                 except Exception as e:
                     logger.warning(f"[Apify prefetch] {sport}: {e}")
         threading.Thread(target=_warm, daemon=True).start()
 
-    # ── Core fetch: cache → run-sync → trigger refresh ────────────────────────
+    # ── Main fetch with fallback chain ────────────────────────────────────────
     def _fetch_sport(self, sport: str) -> List[Match]:
         ck = self._ck("fs_all", sport)
         cached = self._get(ck, APIConfig.TTL_LIVE)
         if cached is not None:
             return cached
 
-        items = self._run_sync(sport, live_only=False, max_items=300)
-        if items is None:
-            # No result — trigger background run for next time
-            self._trigger_refresh(sport)
+        items = None
+
+        # Try strategy 1: FlashScore extractor (football + basketball only)
+        items = self._fetch_via_extractor(sport)
+        if items is not None:
+            logger.info(f"[Apify] {sport}: {len(items)} items via extractor")
+
+        # Try strategy 2: SofaScore (faster, 13 sports)
+        if not items:
+            items = self._fetch_via_sofascore(sport)
+            if items is not None:
+                logger.info(f"[Apify] {sport}: {len(items)} items via SofaScore")
+
+        # Try strategy 3: URL-based scraper
+        if not items:
+            items = self._fetch_via_url_scraper(sport)
+            if items is not None:
+                logger.info(f"[Apify] {sport}: {len(items)} items via URL scraper")
+
+        if not items:
+            logger.warning(f"[Apify] All strategies returned empty for {sport}")
             return []
 
         matches = self._parse_items(items, sport)
-        self._set(ck, matches)
+        if matches:
+            self._set(ck, matches)
         return matches
 
     def get_live_matches(self, sport: str) -> List[Match]:
@@ -1316,7 +1400,7 @@ class FlashScoreProvider(DataProvider):
             return []
         return self._fetch_sport(sport)
 
-    # ── Parser: handles FlashScore's actual output schema ────────────────────
+    # ── Parser — handles all three actor output schemas ───────────────────────
     def _parse_items(self, items: List[Dict], sport: str) -> List[Match]:
         matches = []
         for item in items:
@@ -1324,71 +1408,86 @@ class FlashScoreProvider(DataProvider):
                 continue
 
             # ── Teams ──────────────────────────────────────────────────────
-            home_raw = (item.get("homeTeam") or item.get("homeName") or
-                        item.get("home")     or "")
-            away_raw = (item.get("awayTeam") or item.get("awayName") or
-                        item.get("away")     or "")
-            # homeTeam can be a string or {"name": "Arsenal", "id": "1"}
+            home_raw = (item.get("homeTeam") or item.get("home_team") or
+                        item.get("homeName") or item.get("home") or
+                        item.get("homeTeamName") or "")
+            away_raw = (item.get("awayTeam") or item.get("away_team") or
+                        item.get("awayName") or item.get("away") or
+                        item.get("awayTeamName") or "")
+            # Can be string or {"name": "Arsenal", "id": "1"}
             home = (home_raw.get("name") if isinstance(home_raw, dict)
-                    else str(home_raw)) or "TBD"
+                    else str(home_raw).strip()) or "TBD"
             away = (away_raw.get("name") if isinstance(away_raw, dict)
-                    else str(away_raw)) or "TBD"
+                    else str(away_raw).strip()) or "TBD"
+            if home == "TBD" and away == "TBD":
+                continue
 
-            # ── League / tournament ────────────────────────────────────────
-            # tournament can be {"name": "Premier League", "category": {...}}
+            # ── League / tournament ─────────────────────────────────────────
             tourn_raw = (item.get("tournament") or item.get("league") or
-                         item.get("competition") or {})
+                         item.get("competition") or item.get("tournamentName") or
+                         item.get("leagueName") or {})
             if isinstance(tourn_raw, dict):
-                league  = tourn_raw.get("name", sport)
-                country = (tourn_raw.get("category", {}) or {}).get("name", "")
+                league  = tourn_raw.get("name") or tourn_raw.get("uniqueName") or sport
+                country = (tourn_raw.get("category") or {})
+                country = country.get("name", "") if isinstance(country, dict) else str(country)
                 l_id    = str(tourn_raw.get("id", ""))
             else:
-                league  = str(tourn_raw) or sport
+                league  = str(tourn_raw).strip() or sport
                 country = str(item.get("country") or item.get("countryName") or "")
                 l_id    = str(item.get("tournamentId") or item.get("leagueId") or "")
 
-            # ── Match ID ───────────────────────────────────────────────────
-            mid = str(item.get("id") or item.get("matchId") or
-                      abs(hash(f"{home}{away}{league}"))%10**9)
+            # ── Match ID ────────────────────────────────────────────────────
+            mid = str(item.get("id") or item.get("matchId") or item.get("eventId") or
+                      abs(hash(f"{home}{away}{league}")) % 10**9)
 
-            # ── Status ─────────────────────────────────────────────────────
-            raw_st  = str(item.get("status") or item.get("matchStatus") or
-                          item.get("state")  or "Not started").strip().lower()
+            # ── Status ──────────────────────────────────────────────────────
+            raw_st = str(
+                item.get("status") or item.get("matchStatus") or
+                item.get("statusDescription") or item.get("state") or
+                item.get("statusType", {}).get("description", "") or
+                "Not started"
+            ).strip().lower()
+
             if raw_st in FS_STATUS_SKIP:
                 continue
-            is_live = raw_st in FS_STATUS_LIVE or any(
-                x in raw_st for x in ["half","period","quarter","set","play",
-                                       "progress","ongoing","extra","penalt"]
-            )
-            is_done = raw_st in FS_STATUS_DONE or any(
-                x in raw_st for x in ["finish","final","ended","complet","retired"]
-            )
+            is_live = (raw_st in FS_STATUS_LIVE or
+                       any(x in raw_st for x in [
+                           "half", "period", "quarter", "set ", "play",
+                           "progress", "ongoing", "extra", "penalt", "live",
+                       ]))
+            is_done = (raw_st in FS_STATUS_DONE or
+                       any(x in raw_st for x in [
+                           "finish", "final", "ended", "complet", "retired",
+                           "walkover", "abandon",
+                       ]))
             status = "LIVE" if is_live else ("FINISHED" if is_done else "SCHEDULED")
 
-            # ── Score ──────────────────────────────────────────────────────
-            score_raw = item.get("score") or {}
+            # ── Score ───────────────────────────────────────────────────────
+            sc = item.get("score") or item.get("result") or {}
+            # SofaScore uses homeScore/awayScore as top-level ints
             home_score = _toint(
                 item.get("homeScore") or item.get("home_score") or
-                (score_raw.get("current","").split(":")[0].strip()
-                 if isinstance(score_raw, dict) and "current" in score_raw else None) or
-                (score_raw.get("home") if isinstance(score_raw, dict) else None)
+                (sc.get("home") if isinstance(sc, dict) else None) or
+                (sc.get("current", "").split(":")[0].strip()
+                 if isinstance(sc, dict) and "current" in sc else None)
             )
             away_score = _toint(
                 item.get("awayScore") or item.get("away_score") or
-                (score_raw.get("current","").split(":")[-1].strip()
-                 if isinstance(score_raw, dict) and "current" in score_raw else None) or
-                (score_raw.get("away") if isinstance(score_raw, dict) else None)
+                (sc.get("away") if isinstance(sc, dict) else None) or
+                (sc.get("current", "").split(":")[-1].strip()
+                 if isinstance(sc, dict) and "current" in sc else None)
             )
 
-            # ── Start time ─────────────────────────────────────────────────
+            # ── Start time ──────────────────────────────────────────────────
             start = None
-            for key in ("startTimestamp","startTime","start_time","kickoff",
-                        "date","scheduledTime","matchTime","datetime"):
+            for key in ("startTimestamp", "startTime", "start_time", "kickoff",
+                        "date", "scheduledTime", "matchTime", "datetime",
+                        "startDateTimestamp"):
                 raw = item.get(key)
                 if raw:
                     try:
                         if isinstance(raw, (int, float)):
-                            ts = raw/1000 if raw > 1e10 else raw
+                            ts    = raw / 1000 if raw > 1e10 else raw
                             start = datetime.utcfromtimestamp(ts)
                         else:
                             start = datetime.fromisoformat(
@@ -1399,7 +1498,7 @@ class FlashScoreProvider(DataProvider):
 
             matches.append(Match(
                 match_id   = mid,
-                provider   = "FlashScore",
+                provider   = "FlashScore/SofaScore",
                 league     = league,
                 league_id  = l_id,
                 home_team  = home,
