@@ -769,36 +769,36 @@ class TheSportsDBProvider(DataProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# APIFY / FLASHSCORE PROVIDER - CORRECTED VERSION
+# APIFY / FLASHSCORE PROVIDER - CORRECTED WITH FOOTBALL MAPPING
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# FlashScore sport homepage URLs (for URL-based actor)
-FS_URL_MAP = {
-    "Soccer":       "https://www.flashscore.com/football/",
-    "NBA":          "https://www.flashscore.com/basketball/",
-    "NFL":          "https://www.flashscore.com/american-football/",
-    "MLB":          "https://www.flashscore.com/baseball/",
-    "NHL":          "https://www.flashscore.com/hockey/",
-    "Tennis":       "https://www.flashscore.com/tennis/",
-    "Cricket":      "https://www.flashscore.com/cricket/",
-    "Rugby":        "https://www.flashscore.com/rugby-union/",
-    "Volleyball":   "https://www.flashscore.com/volleyball/",
-    "Handball":     "https://www.flashscore.com/handball/",
-    "Table Tennis": "https://www.flashscore.com/table-tennis/",
-    "Snooker":      "https://www.flashscore.com/snooker/",
-    "Darts":        "https://www.flashscore.com/darts/",
-    "Esports":      "https://www.flashscore.com/esports/",
-    "Golf":         "https://www.flashscore.com/golf/",
-    "Formula 1":    "https://www.flashscore.com/motorsport/",
-    "UFC":          "https://www.flashscore.com/mma/",
-}
-
-
 class ApifyProvider(DataProvider):
-    """Calls Apify FlashScore scraper with correct API workflow"""
+    """Calls Apify FlashScore scraper with correct API workflow and sport name mapping"""
 
     # Use the actor ID from your Apify account
     ACTOR_ID = "crawlerbros~flashscore-scraper"
+    
+    # Map internal sport names to FlashScore URL paths
+    # IMPORTANT: FlashScore uses "football" not "soccer"
+    FLASHSCORE_PATH_MAP = {
+        "Soccer": "football",
+        "NBA": "basketball/nba",
+        "NFL": "american-football/nfl",
+        "MLB": "baseball/mlb",
+        "NHL": "hockey/nhl",
+        "Tennis": "tennis",
+        "Cricket": "cricket",
+        "Rugby": "rugby",
+        "Volleyball": "volleyball",
+        "Handball": "handball",
+        "Table Tennis": "table-tennis",
+        "Snooker": "snooker",
+        "Darts": "darts",
+        "Esports": "esports",
+        "Golf": "golf",
+        "Formula 1": "motorsport/formula-1",
+        "UFC": "mma/ufc",
+    }
 
     def __init__(self):
         super().__init__("Apify/FlashScore")
@@ -809,7 +809,23 @@ class ApifyProvider(DataProvider):
     def ok(self):
         return bool(self.token)
 
-    def _call_actor(self, start_url: str, timeout: int = 60) -> Optional[List]:
+    def _get_flashscore_url(self, sport: str) -> Optional[str]:
+        """Get correct FlashScore URL for the sport - handles 'Soccer' to 'football' mapping"""
+        path = self.FLASHSCORE_PATH_MAP.get(sport)
+        if not path:
+            logger.warning(f"[Apify] No URL mapping for sport: {sport}")
+            return None
+        
+        # Build the URL
+        url = f"https://www.flashscore.com/{path}/"
+        
+        # For soccer, also log which URL we're using
+        if sport == "Soccer":
+            logger.info(f"[Apify] Using FlashScore URL for football: {url}")
+        
+        return url
+
+    def _call_actor(self, start_url: str, timeout: int = 65) -> Optional[List]:
         """Run Apify actor and wait for results"""
         if not self.token:
             logger.warning("[Apify] No API token")
@@ -817,11 +833,15 @@ class ApifyProvider(DataProvider):
 
         # Step 1: Start the actor run
         run_url = f"https://api.apify.com/v2/acts/{self.ACTOR_ID}/runs"
+        
+        # Build payload with proper parameters for FlashScore
         payload = {
             "startUrls": [{"url": start_url}],
-            "maxItems": 200,
+            "maxItems": 300,
             "proxyConfiguration": {"useApifyProxy": True}
         }
+        
+        logger.info(f"[Apify] Starting actor with URL: {start_url}")
 
         try:
             # Start the run
@@ -833,18 +853,21 @@ class ApifyProvider(DataProvider):
             )
 
             if start_response.status_code != 201:
-                logger.warning(f"[Apify] Failed to start run: {start_response.status_code}")
+                logger.error(f"[Apify] Failed to start run: {start_response.status_code} - {start_response.text[:200]}")
                 return None
 
             run_data = start_response.json()
             run_id = run_data.get('data', {}).get('id')
 
             if not run_id:
-                logger.warning("[Apify] No run ID returned")
+                logger.error("[Apify] No run ID returned")
                 return None
 
-            # Step 2: Wait for completion
+            # Step 2: Wait for completion with progress indicator
+            logger.info(f"[Apify] Run started: {run_id}")
             start_time = time.time()
+            last_status = ""
+            
             while time.time() - start_time < timeout:
                 status_url = f"https://api.apify.com/v2/actor-runs/{run_id}"
                 status_response = requests.get(status_url, params={"token": self.token})
@@ -852,27 +875,32 @@ class ApifyProvider(DataProvider):
                 if status_response.status_code == 200:
                     status_data = status_response.json()
                     run_status = status_data.get('data', {}).get('status')
+                    
+                    # Log status change
+                    if run_status != last_status:
+                        logger.info(f"[Apify] Run status: {run_status}")
+                        last_status = run_status
 
                     if run_status == 'SUCCEEDED':
                         # Step 3: Fetch results
                         dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items"
-                        items_response = requests.get(dataset_url, params={"token": self.token})
+                        items_response = requests.get(dataset_url, params={"token": self.token, "limit": 500})
 
                         if items_response.status_code == 200:
                             items = items_response.json()
-                            logger.info(f"[Apify] Retrieved {len(items)} items")
+                            logger.info(f"[Apify] Retrieved {len(items)} items from run")
                             return items
                         else:
-                            logger.warning(f"[Apify] Failed to get dataset: {items_response.status_code}")
+                            logger.error(f"[Apify] Failed to get dataset: {items_response.status_code}")
                             return None
 
                     elif run_status in ['FAILED', 'TIMED-OUT', 'ABORTED']:
-                        logger.warning(f"[Apify] Run {run_status}")
+                        logger.error(f"[Apify] Run {run_status}")
                         return None
 
-                time.sleep(2)  # Wait before checking again
+                time.sleep(3)  # Wait before checking again
 
-            logger.warning(f"[Apify] Timeout after {timeout}s")
+            logger.error(f"[Apify] Timeout after {timeout}s")
             return None
 
         except Exception as e:
@@ -881,20 +909,35 @@ class ApifyProvider(DataProvider):
 
     def fetch_matches(self, sport: str) -> List[Match]:
         """Fetch matches for a given sport from FlashScore"""
+        # Check cache first
         ck = self._ck("flashscore", sport)
         cached = self._get(ck, APIConfig.TTL_LIVE)
         if cached is not None:
+            logger.info(f"[Apify] Returning {len(cached)} cached matches for {sport}")
             return cached
 
-        url = FS_URL_MAP.get(sport)
+        # Get the correct FlashScore URL for this sport
+        url = self._get_flashscore_url(sport)
         if not url:
             logger.warning(f"[Apify] No URL for sport: {sport}")
             return []
 
         logger.info(f"[Apify] Fetching {sport} from {url}")
-        items = self._call_actor(url, 60)
+        
+        # For soccer, try multiple URLs if needed
+        items = None
+        if sport == "Soccer":
+            # Try main football URL
+            items = self._call_actor(url, 65)
+            
+            # If no items, try with Premier League URL
+            if not items or len(items) == 0:
+                logger.info("[Apify] Trying Premier League specific URL")
+                items = self._call_actor("https://www.flashscore.com/football/england/premier-league/", 60)
+        else:
+            items = self._call_actor(url, 60)
 
-        if not items:
+        if not items or len(items) == 0:
             logger.warning(f"[Apify] No items returned for {sport}")
             return []
 
@@ -928,13 +971,16 @@ class ApifyProvider(DataProvider):
             return
         self._prefetch_done = True
 
-        priority_sports = ["Soccer", "Tennis", "NBA"]
+        # Priority sports - note: "Soccer" maps to "football" in FlashScore
+        priority_sports = ["Soccer", "NBA", "Tennis", "NFL", "MLB", "NHL"]
+        
         def _run():
             for sport in priority_sports:
                 try:
                     logger.info(f"[Apify] Prefetching {sport}")
-                    self.fetch_matches(sport)
-                    time.sleep(3)
+                    matches = self.fetch_matches(sport)
+                    logger.info(f"[Apify] Prefetched {len(matches)} matches for {sport}")
+                    time.sleep(5)  # Delay between prefetches
                 except Exception as e:
                     logger.warning(f"[Apify] Prefetch error {sport}: {e}")
 
@@ -943,16 +989,23 @@ class ApifyProvider(DataProvider):
     def _parse_items(self, items: List, sport: str) -> List[Match]:
         """Parse Apify output into Match objects"""
         out = []
+        
+        if not items:
+            return out
+
+        logger.info(f"[Apify] Parsing {len(items)} items for {sport}")
 
         for item in items:
             if not isinstance(item, dict):
                 continue
 
-            # Extract team names - try various field names
+            # Extract team names - handle various field names
             home = (item.get('homeTeam') or item.get('home') or
-                   item.get('team1') or item.get('homeName') or '')
+                   item.get('team1') or item.get('homeName') or 
+                   item.get('participants', [{}])[0].get('name') if item.get('participants') else '')
             away = (item.get('awayTeam') or item.get('away') or
-                   item.get('team2') or item.get('awayName') or '')
+                   item.get('team2') or item.get('awayName') or
+                   item.get('participants', [{}])[1].get('name') if len(item.get('participants', [])) > 1 else '')
 
             # Handle nested team objects
             if isinstance(home, dict):
@@ -964,6 +1017,7 @@ class ApifyProvider(DataProvider):
             home = str(home).strip() if home else 'TBD'
             away = str(away).strip() if away else 'TBD'
 
+            # Skip if no valid teams
             if home == 'TBD' and away == 'TBD':
                 continue
 
@@ -978,12 +1032,12 @@ class ApifyProvider(DataProvider):
 
             # Parse status
             status_raw = str(item.get('status') or item.get('matchStatus') or
-                            item.get('statusText') or 'SCHEDULED').lower()
+                            item.get('statusText') or item.get('eventStatus') or 'SCHEDULED').lower()
 
             # Determine if live or finished
-            is_live = any(x in status_raw for x in ['live', 'in progress', '1st', '2nd',
-                                                      'half', 'period', 'quarter', 'ongoing'])
-            is_finished = any(x in status_raw for x in ['finished', 'ft', 'final', 'ended'])
+            is_live = any(x in status_raw for x in ['live', 'in progress', '1st', '2nd', '1st half', '2nd half',
+                                                      'half', 'period', 'quarter', 'ongoing', 'inplay', 'in_play'])
+            is_finished = any(x in status_raw for x in ['finished', 'ft', 'final', 'ended', 'complete'])
 
             if is_live:
                 status = "LIVE"
@@ -1010,16 +1064,16 @@ class ApifyProvider(DataProvider):
 
             # Try other score field names
             if home_score is None:
-                home_score = item.get('homeScore') or item.get('goalsHome')
+                home_score = item.get('homeScore') or item.get('goalsHome') or item.get('scoreHome')
             if away_score is None:
-                away_score = item.get('awayScore') or item.get('goalsAway')
+                away_score = item.get('awayScore') or item.get('goalsAway') or item.get('scoreAway')
 
             home_score = _toint(home_score)
             away_score = _toint(away_score)
 
             # Parse start time
             start_time = None
-            time_fields = ['startTime', 'startTimestamp', 'date', 'kickoff', 'time', 'startDate']
+            time_fields = ['startTime', 'startTimestamp', 'date', 'kickoff', 'time', 'startDate', 'scheduled']
             for field in time_fields:
                 raw_time = item.get(field)
                 if raw_time:
@@ -1031,14 +1085,20 @@ class ApifyProvider(DataProvider):
                             start_time = datetime.fromtimestamp(raw_time)
                         elif isinstance(raw_time, str):
                             # Try to parse ISO format
-                            start_time = datetime.fromisoformat(raw_time.replace('Z', '+00:00'))
+                            for fmt in ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d']:
+                                try:
+                                    start_time = datetime.strptime(raw_time[:19], fmt)
+                                    break
+                                except:
+                                    continue
                         break
-                    except:
+                    except Exception as e:
                         continue
 
             # Create match ID
             match_id = str(item.get('id') or item.get('matchId') or
-                          item.get('eventId') or abs(hash(f"{home}{away}{league}")) % 10**9)
+                          item.get('eventId') or item.get('_id') or
+                          abs(hash(f"{home}{away}{league}{start_time}")) % 10**9)
 
             out.append(Match(
                 match_id=match_id,
@@ -1054,6 +1114,7 @@ class ApifyProvider(DataProvider):
                 country=country[:50] if country else None,
             ))
 
+        logger.info(f"[Apify] Successfully parsed {len(out)} matches for {sport}")
         return out
 
 
@@ -1071,7 +1132,7 @@ def _toint(v) -> Optional[int]:
 SOCCER_SPORTS = {"Soccer"}
 US_SPORTS     = {"NBA","NFL","MLB","NHL"}
 MISC_SPORTS   = {"UFC","Formula 1","Tennis","Cricket","Golf"}
-FS_SPORTS     = set(FS_URL_MAP.keys())   # all 17
+FS_SPORTS     = set(ApifyProvider.FLASHSCORE_PATH_MAP.keys())   # all mapped sports
 
 
 class EmpireDataRouter:
