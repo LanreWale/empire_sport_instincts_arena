@@ -100,7 +100,6 @@ st.markdown("""
 # SPORT CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 SPORT_OPTIONS = {
-    # ── Legacy providers (+ FlashScore overlay when Apify key active)
     "Soccer":       {"icon": "⚽",  "provider": "FlashScore/API-SPORTS"},
     "NBA":          {"icon": "🏀",  "provider": "FlashScore/MySportsFeeds"},
     "NFL":          {"icon": "🏈",  "provider": "FlashScore/MySportsFeeds"},
@@ -111,7 +110,6 @@ SPORT_OPTIONS = {
     "Tennis":       {"icon": "🎾",  "provider": "FlashScore/TheSportsDB"},
     "Cricket":      {"icon": "🏏",  "provider": "FlashScore/TheSportsDB"},
     "Golf":         {"icon": "⛳",  "provider": "FlashScore/TheSportsDB"},
-    # ── FlashScore-native (daily global coverage)
     "Volleyball":   {"icon": "🏐",  "provider": "FlashScore"},
     "Handball":     {"icon": "🤾",  "provider": "FlashScore"},
     "Rugby":        {"icon": "🏉",  "provider": "FlashScore"},
@@ -271,15 +269,44 @@ def render_sidebar() -> tuple:
                 f'{s["name"]}: {s["status"]}</div>',
                 unsafe_allow_html=True,
             )
-        # Claude AI status
-        ai_c = "#00ff88" if ai.available else "#ff6b6b"
-        ai_s = "🟢 ONLINE" if ai.available else "🔴 KEY MISSING"
-        st.markdown(
-            f'<div style="font-family:Orbitron;font-size:.65rem;color:{ai_c};padding:2px 0;">'
-            f'Claude AI: {ai_s}</div>',
-            unsafe_allow_html=True,
-        )
         st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
+        
+        # ===== DIAGNOSTIC: API Key Status =====
+        with st.expander("🔧 DIAGNOSTIC: API Key Status", expanded=True):
+            # Check APIFY_API_KEY
+            apify_key = os.environ.get("APIFY_API_KEY")
+            if apify_key:
+                masked_key = f"{apify_key[:10]}...{apify_key[-4:]}" if len(apify_key) > 14 else "***"
+                st.success(f"✅ APIFY_API_KEY found: {masked_key}")
+            else:
+                st.error("❌ APIFY_API_KEY NOT found in environment")
+            
+            # Check ANTHROPIC_API_KEY
+            anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+            if anthropic_key:
+                masked_key = f"{anthropic_key[:10]}...{anthropic_key[-4:]}" if len(anthropic_key) > 14 else "***"
+                st.success(f"✅ ANTHROPIC_API_KEY found: {masked_key}")
+            else:
+                st.warning("⚠️ ANTHROPIC_API_KEY not found (AI predictions disabled)")
+            
+            # Test Apify provider directly
+            st.markdown("---")
+            st.markdown("**🔌 Apify Provider Test:**")
+            provider = _get_apify_provider()
+            if provider:
+                st.success(f"✅ Provider object exists: {type(provider).__name__}")
+                if hasattr(provider, 'ok'):
+                    st.write(f"Provider.ok = {provider.ok}")
+                    if provider.ok:
+                        st.success("✅ Provider reports OK (ready to fetch)")
+                    else:
+                        st.error("❌ Provider reports NOT OK (failed to initialize)")
+                else:
+                    st.warning("⚠️ Provider has no 'ok' attribute")
+            else:
+                st.error("❌ No provider object found - check APIFY_API_KEY")
+        
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
 
         # ── Arena controls ────────────────────────────────────────────────────
@@ -549,13 +576,13 @@ def render_prediction_card(pred: MatchPrediction):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH CARDS  (arena view) - FIXED VERSION
+# MATCH CARDS (arena view) - FIXED VERSION
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        # FIXED: Check Apify provider status without using uninitialized session state
+        # Check Apify provider status without using uninitialized session state
         provider = _get_apify_provider()
-        fs_ok = provider and provider.ok
+        fs_ok = provider and getattr(provider, 'ok', False)
         
         if fs_ok:
             st.warning(
@@ -565,10 +592,17 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
                 "Subsequent loads will be instant from cache."
             )
         else:
-            st.info(
-                f"No {sport} matches found. "
-                "Check that APIFY_API_KEY and sport API keys are set in Render → "
-                "Settings → Environment Variables."
+            st.error(
+                f"❌ **Cannot fetch {sport} matches**\n\n"
+                "**Possible issues:**\n"
+                "1. APIFY_API_KEY not set in Render Environment Variables\n"
+                "2. FlashScore actor not deployed/authorized\n"
+                "3. API quota exceeded or network issue\n\n"
+                "**Solutions:**\n"
+                "• Go to Render Dashboard → Environment Variables\n"
+                "• Add `APIFY_API_KEY` with your Apify API key\n"
+                "• Deploy the 'flashscore-scraper' actor in Apify Console\n"
+                "• Check Render logs for detailed error messages"
             )
         return
 
@@ -737,8 +771,23 @@ def render_arena(sport: str, league_id: str, status: str):
         unsafe_allow_html=True,
     )
 
+    # ===== DIAGNOSTIC EXPANDER =====
+    with st.expander("🔍 Fetch Diagnostics", expanded=False):
+        st.markdown(f"**Sport:** {sport}")
+        st.markdown(f"**League ID:** {league_id}")
+        st.markdown(f"**Status:** {status}")
+        
+        # Check Apify provider
+        apify_provider = _get_apify_provider()
+        st.markdown(f"**Apify Provider:** {apify_provider is not None}")
+        if apify_provider:
+            st.markdown(f"**Provider Type:** {type(apify_provider).__name__}")
+            st.markdown(f"**Provider.ok:** {getattr(apify_provider, 'ok', 'N/A')}")
+        
+        st.markdown(f"**Fetch mode:** {'Live' if status == 'LIVE' else 'Upcoming' if status == 'UPCOMING' else 'All'}")
+    
     # Provider + status badge
-    fs_online   = bool(_get_apify_provider() and _get_apify_provider().ok)
+    fs_online   = bool(_get_apify_provider() and getattr(_get_apify_provider(), 'ok', False))
     badge_color = "#00ff88" if fs_online else "#FFD700"
     badge_text  = "FlashScore LIVE" if fs_online else "Legacy Provider"
     st.markdown(
@@ -747,20 +796,36 @@ def render_arena(sport: str, league_id: str, status: str):
         unsafe_allow_html=True,
     )
 
-    # Show spinner while Apify run-sync is in progress (can take up to 55s first call)
+    # Show spinner while Apify run-sync is in progress
     spinner_msg = (
         f"⚡ Fetching {sport} matches from FlashScore..."
         if fs_online else
         f"📡 Fetching {sport} matches..."
     )
+    
+    # ===== TIMING DIAGNOSTIC =====
+    start_time = time.time()
+    
     with st.spinner(spinner_msg):
         df = _fetch_matches(sport, league_id, status)
+    
+    elapsed = time.time() - start_time
+    
+    # Show fetch results
+    with st.expander("📊 Fetch Results", expanded=False):
+        st.markdown(f"**Fetch time:** {elapsed:.2f} seconds")
+        st.markdown(f"**DataFrame empty:** {df.empty}")
+        st.markdown(f"**Rows returned:** {len(df)}")
+        if not df.empty:
+            st.markdown(f"**Columns:** {', '.join(df.columns[:10])}...")
+            first_row = df.iloc[0]
+            st.markdown(f"**Sample match:** {first_row.get('HOME_TEAM', 'N/A')} vs {first_row.get('AWAY_TEAM', 'N/A')}")
 
     render_match_cards(df, sport)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PREDICTIONS TAB  — AI Batch Scanner + top picks
+# PREDICTIONS TAB — AI Batch Scanner + top picks
 # ══════════════════════════════════════════════════════════════════════════════
 def render_predictions(sport: str, league_id: str, status: str):
     st.markdown('<div class="section-header">🎯 AI PREDICTION CENTER</div>',
@@ -919,7 +984,7 @@ def render_predictions(sport: str, league_id: str, status: str):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ANALYTICS TAB  — AI performance tracking + log
+# ANALYTICS TAB — AI performance tracking + log
 # ══════════════════════════════════════════════════════════════════════════════
 def render_analytics():
     st.markdown('<div class="section-header">📊 AI PERFORMANCE ANALYTICS</div>',
@@ -967,7 +1032,7 @@ def render_analytics():
     else:
         st.info("No predictions generated yet. Go to the ARENA or PREDICTIONS tab and analyse a match.")
 
-    st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
+    st.markdown('<hr class="gold-divider">, unsafe_allow_html=True)
 
     # Provider status
     st.markdown(
