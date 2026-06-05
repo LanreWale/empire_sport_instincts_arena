@@ -1032,7 +1032,7 @@ def render_analytics():
     else:
         st.info("No predictions generated yet. Go to the ARENA or PREDICTIONS tab and analyse a match.")
 
-    st.markdown('<hr class="gold-divider">, unsafe_allow_html=True)
+    st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
     # Provider status
     st.markdown(
