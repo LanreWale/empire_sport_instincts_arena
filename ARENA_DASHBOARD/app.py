@@ -144,14 +144,13 @@ _init_state()
 # ══════════════════════════════════════════════════════════════════════════════
 def _clear_all_caches():
     st.session_state.last_refresh = time.time()
-    # Clear Streamlit's function cache
     st.cache_data.clear()
-    # Clear provider in-memory caches
     for provider in [data.router.api_sports,
-                     data.router.my_sports_feeds,
-                     data.router.the_sports_db,
-                     data.router.flashscore]:
-        provider.cache.clear()
+                     data.router.football_data,
+                     data.router.msf,
+                     data.router.tsdb,
+                     data.router.apify]:
+        provider.clear()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -549,7 +548,7 @@ def render_prediction_card(pred: MatchPrediction):
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        fs_ok = st.session_state.empire_data.router.flashscore.ok
+        fs_ok = st.session_state.empire_data.router.apify.ok
         if fs_ok:
             st.warning(
                 f"⏳ **No {sport} matches returned yet.**\n\n"
@@ -731,7 +730,7 @@ def render_arena(sport: str, league_id: str, status: str):
     )
 
     # Provider + status badge
-    fs_online   = data.router.flashscore.ok
+    fs_online   = data.router.apify.ok
     badge_color = "#00ff88" if fs_online else "#FFD700"
     badge_text  = "FlashScore LIVE" if fs_online else "Legacy Provider"
     st.markdown(
