@@ -549,11 +549,14 @@ def render_prediction_card(pred: MatchPrediction):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH CARDS  (arena view)
+# MATCH CARDS  (arena view) - FIXED VERSION
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        fs_ok = st.session_state.empire_bool(_get_apify_provider() and _get_apify_provider().ok)
+        # FIXED: Check Apify provider status without using uninitialized session state
+        provider = _get_apify_provider()
+        fs_ok = provider and provider.ok
+        
         if fs_ok:
             st.warning(
                 f"⏳ **No {sport} matches returned yet.**\n\n"
