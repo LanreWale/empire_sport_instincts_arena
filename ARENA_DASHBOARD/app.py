@@ -142,15 +142,20 @@ _init_state()
 # ══════════════════════════════════════════════════════════════════════════════
 # CACHE CLEAR
 # ══════════════════════════════════════════════════════════════════════════════
+def _get_apify_provider():
+    """Safe accessor — works with both old (.flashscore) and new (.apify) router."""
+    r = st.session_state.empire_data.router
+    return getattr(r, "apify", None) or getattr(r, "flashscore", None)
+
 def _clear_all_caches():
     st.session_state.last_refresh = time.time()
     st.cache_data.clear()
-    for provider in [data.router.api_sports,
-                     data.router.football_data,
-                     data.router.msf,
-                     data.router.tsdb,
-                     data.router.apify]:
-        provider.clear()
+    r = st.session_state.empire_data.router
+    for attr in ["api_sports", "football_data", "msf", "tsdb", "apify",
+                 "flashscore", "my_sports_feeds", "the_sports_db"]:
+        p = getattr(r, attr, None)
+        if p is not None:
+            getattr(p, "clear", lambda: getattr(p, "cache", {}).clear())()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -548,7 +553,7 @@ def render_prediction_card(pred: MatchPrediction):
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        fs_ok = st.session_state.empire_data.router.apify.ok
+        fs_ok = st.session_state.empire_bool(_get_apify_provider() and _get_apify_provider().ok)
         if fs_ok:
             st.warning(
                 f"⏳ **No {sport} matches returned yet.**\n\n"
@@ -730,7 +735,7 @@ def render_arena(sport: str, league_id: str, status: str):
     )
 
     # Provider + status badge
-    fs_online   = data.router.apify.ok
+    fs_online   = bool(_get_apify_provider() and _get_apify_provider().ok)
     badge_color = "#00ff88" if fs_online else "#FFD700"
     badge_text  = "FlashScore LIVE" if fs_online else "Legacy Provider"
     st.markdown(
