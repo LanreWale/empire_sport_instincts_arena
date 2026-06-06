@@ -428,31 +428,26 @@ def render_sidebar() -> tuple:
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
         
-        # ===== DIAGNOSTIC SECTION =====
-        with st.expander("🔧 DIAGNOSTIC TOOLS", expanded=False):
-            st.markdown("### API-SPORTS Diagnostics")
-            
-            if st.button("🔴 TEST LIVE MATCHES", use_container_width=True):
-                test_api_sports_live()
-            
-            if st.button("📋 TEST UPCOMING MATCHES", use_container_width=True):
-                test_api_sports_upcoming()
-            
-            st.markdown("---")
-            st.markdown("### Environment Variables")
+        # ===== DIAGNOSTIC BUTTONS - ALWAYS VISIBLE =====
+        st.markdown("### 🔬 QUICK DIAGNOSTICS")
+        
+        # Button 1: Test Live Matches
+        if st.button("🔴 TEST LIVE MATCHES NOW", use_container_width=True, type="primary"):
+            test_api_sports_live()
+        
+        # Button 2: Test Upcoming Matches
+        if st.button("📋 TEST UPCOMING MATCHES", use_container_width=True):
+            test_api_sports_upcoming()
+        
+        # Button 3: Check API Key Status
+        if st.button("🔑 CHECK API KEY STATUS", use_container_width=True):
             api_key = os.environ.get("API_SPORTS_KEY")
             if api_key:
                 masked = f"{api_key[:10]}...{api_key[-4:]}" if len(api_key) > 14 else "***"
-                st.success(f"✅ API_SPORTS_KEY: {masked}")
+                st.success(f"✅ API_SPORTS_KEY is set: {masked}")
+                st.info(f"Key length: {len(api_key)} characters")
             else:
-                st.error("❌ API_SPORTS_KEY not set")
-            
-            anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-            if anthropic_key:
-                masked = f"{anthropic_key[:10]}...{anthropic_key[-4:]}" if len(anthropic_key) > 14 else "***"
-                st.success(f"✅ ANTHROPIC_API_KEY: {masked}")
-            else:
-                st.warning("⚠️ ANTHROPIC_API_KEY not set (AI disabled)")
+                st.error("❌ API_SPORTS_KEY is NOT set in environment variables")
         
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
 
@@ -728,7 +723,7 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
                 "• Check your API key at dashboard.api-sports.io\n\n"
                 "**💡 Try these diagnostics:**\n"
                 "• Click **🔴 TEST LIVE MATCHES** in the sidebar\n"
-                "• Click **📋 TEST UPCOMING MATCHES**\n"
+                "• Click **📋 TEST UPCOMING MATCHES** in the sidebar\n"
                 "• Try changing status filter to UPCOMING or FINISHED\n"
                 "• Click **🔄 REFRESH DATA** to try again"
             )
