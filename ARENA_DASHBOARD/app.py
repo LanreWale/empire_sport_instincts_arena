@@ -14,6 +14,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import time
 import logging
+import requests
+import json
 
 from empire_data_layer import EmpireDashboardData, APIConfig
 from empire_ai_engine  import (
@@ -46,6 +48,157 @@ REFRESH_INTERVAL = 30
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DIAGNOSTIC FUNCTION
+# ══════════════════════════════════════════════════════════════════════════════
+def diagnose_apify_directly():
+    """Direct diagnostic to test Apify actor without going through the data layer"""
+    st.markdown("### 🔬 Apify FlashScore Direct Diagnostic")
+    st.markdown("---")
+    
+    api_key = os.environ.get("APIFY_API_KEY")
+    if not api_key:
+        st.error("❌ APIFY_API_KEY not found in environment variables")
+        return
+    
+    st.success(f"✅ APIFY_API_KEY found (length: {len(api_key)})")
+    
+    # Use the correct actor ID from your Apify account
+    actor_id = "crawlerbros~flashscore-scraper"
+    
+    # Test URL for football (not soccer!)
+    test_url = "https://www.flashscore.com/football/"
+    
+    st.markdown(f"**Actor ID:** `{actor_id}`")
+    st.markdown(f"**Test URL:** `{test_url}`")
+    st.markdown("---")
+    
+    # Step 1: Start the actor run
+    run_url = f"https://api.apify.com/v2/acts/{actor_id}/runs"
+    payload = {
+        "startUrls": [{"url": test_url}],
+        "maxItems": 50,
+        "proxyConfiguration": {"useApifyProxy": True}
+    }
+    
+    try:
+        with st.spinner("🚀 Starting Apify actor run..."):
+            start_response = requests.post(
+                run_url,
+                params={"token": api_key},
+                json=payload,
+                timeout=30
+            )
+        
+        if start_response.status_code != 201:
+            st.error(f"❌ Failed to start actor: HTTP {start_response.status_code}")
+            st.code(start_response.text[:500])
+            return
+        
+        run_data = start_response.json()
+        run_id = run_data.get('data', {}).get('id')
+        st.success(f"✅ Actor run started! Run ID: `{run_id}`")
+        
+        # Step 2: Wait for completion
+        st.markdown("---")
+        st.markdown("⏳ **Waiting for actor to complete...**")
+        progress_bar = st.progress(0)
+        status_placeholder = st.empty()
+        
+        start_time = time.time()
+        timeout = 65
+        
+        while time.time() - start_time < timeout:
+            status_url = f"https://api.apify.com/v2/actor-runs/{run_id}"
+            status_response = requests.get(status_url, params={"token": api_key})
+            
+            if status_response.status_code == 200:
+                status_data = status_response.json()
+                run_status = status_data.get('data', {}).get('status')
+                
+                # Update progress
+                elapsed = int(time.time() - start_time)
+                progress = min(elapsed / timeout, 0.95)
+                progress_bar.progress(progress)
+                status_placeholder.info(f"Status: **{run_status}** (elapsed: {elapsed}s)")
+                
+                if run_status == 'SUCCEEDED':
+                    progress_bar.progress(1.0)
+                    status_placeholder.success("✅ Actor run completed successfully!")
+                    
+                    # Step 3: Fetch results
+                    dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items"
+                    items_response = requests.get(dataset_url, params={"token": api_key, "limit": 100})
+                    
+                    if items_response.status_code == 200:
+                        items = items_response.json()
+                        st.markdown("---")
+                        st.markdown(f"### 📊 Results: {len(items)} items returned")
+                        
+                        if items and len(items) > 0:
+                            st.markdown("**First item (raw JSON):**")
+                            st.json(items[0])
+                            
+                            st.markdown("---")
+                            st.markdown("**📋 Parsed Matches:**")
+                            
+                            matches_found = []
+                            for idx, item in enumerate(items[:20]):
+                                # Try different field names
+                                home = (item.get('homeTeam') or item.get('home') or 
+                                       item.get('team1') or item.get('homeName'))
+                                away = (item.get('awayTeam') or item.get('away') or 
+                                       item.get('team2') or item.get('awayName'))
+                                
+                                # Handle nested objects
+                                if isinstance(home, dict):
+                                    home = home.get('name', home.get('shortName', str(home)))
+                                if isinstance(away, dict):
+                                    away = away.get('name', away.get('shortName', str(away)))
+                                
+                                if home and away and home != away:
+                                    matches_found.append(f"{home} vs {away}")
+                            
+                            if matches_found:
+                                for match in matches_found[:10]:
+                                    st.write(f"• {match}")
+                                if len(matches_found) > 10:
+                                    st.write(f"... and {len(matches_found) - 10} more")
+                                st.success(f"✅ Successfully parsed {len(matches_found)} matches!")
+                            else:
+                                st.warning("Could not parse team names from the data")
+                                st.markdown("**Raw item structure for debugging:**")
+                                # Show available keys
+                                st.json(list(items[0].keys()))
+                        else:
+                            st.warning("⚠️ No items returned from actor - FlashScore may have returned empty results")
+                    else:
+                        st.error(f"❌ Failed to fetch results: HTTP {items_response.status_code}")
+                    return
+                    
+                elif run_status in ['FAILED', 'TIMED-OUT', 'ABORTED']:
+                    progress_bar.progress(1.0)
+                    status_placeholder.error(f"❌ Actor run {run_status}")
+                    
+                    # Try to get error logs
+                    log_url = f"https://api.apify.com/v2/actor-runs/{run_id}/log"
+                    log_response = requests.get(log_url, params={"token": api_key})
+                    if log_response.status_code == 200:
+                        st.markdown("**Error Logs (last 1000 chars):**")
+                        st.code(log_response.text[-1000:])
+                    return
+            
+            time.sleep(2)
+        
+        st.error("❌ Timeout waiting for actor to complete (65 seconds)")
+        
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CSS
@@ -372,6 +525,11 @@ def render_sidebar() -> tuple:
         if st.button("🔄 REFRESH DATA", use_container_width=True):
             _clear_all_caches()
             st.rerun()
+        
+        # ===== DIRECT APIFY DIAGNOSTIC BUTTON =====
+        st.markdown("---")
+        if st.button("🔬 DIRECT APIFY TEST", use_container_width=True):
+            diagnose_apify_directly()
 
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
 
@@ -589,7 +747,8 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
                 f"⏳ **No {sport} matches returned yet.**\n\n"
                 "FlashScore via Apify may need a moment to complete its first run. "
                 "**Click 🔄 REFRESH DATA** in the sidebar to trigger a fresh fetch. "
-                "Subsequent loads will be instant from cache."
+                "Subsequent loads will be instant from cache.\n\n"
+                "**💡 Tip:** Click the **🔬 DIRECT APIFY TEST** button in the sidebar to diagnose the issue."
             )
         else:
             st.error(
@@ -601,7 +760,7 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
                 "**Solutions:**\n"
                 "• Go to Render Dashboard → Environment Variables\n"
                 "• Add `APIFY_API_KEY` with your Apify API key\n"
-                "• Deploy the 'flashscore-scraper' actor in Apify Console\n"
+                "• Click **🔬 DIRECT APIFY TEST** for detailed diagnostics\n"
                 "• Check Render logs for detailed error messages"
             )
         return
