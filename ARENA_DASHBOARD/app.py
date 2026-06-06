@@ -14,6 +14,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import time
 import logging
+import requests
 
 from empire_data_layer import EmpireDashboardData, APIConfig
 from empire_ai_engine  import (
@@ -46,6 +47,172 @@ REFRESH_INTERVAL = 30
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DIAGNOSTIC FUNCTIONS
+# ══════════════════════════════════════════════════════════════════════════════
+def test_api_sports_live():
+    """Direct test of API-SPORTS for live matches"""
+    st.markdown("### 🔴 LIVE MATCHES DIAGNOSTIC")
+    st.markdown("---")
+    
+    api_key = os.environ.get("API_SPORTS_KEY")
+    if not api_key:
+        st.error("❌ API_SPORTS_KEY not found in environment variables")
+        st.markdown("""
+        **To fix:**
+        1. Go to Render Dashboard → Environment Variables
+        2. Add `API_SPORTS_KEY` with your API key
+        3. Redeploy your app
+        """)
+        return
+    
+    st.success(f"✅ API_SPORTS_KEY found (length: {len(api_key)})")
+    
+    headers = {"x-apisports-key": api_key}
+    
+    # Test 1: Check API status
+    st.markdown("### 📡 Test 1: API Connection")
+    try:
+        response = requests.get(
+            "https://v3.football.api-sports.io/status",
+            headers=headers,
+            timeout=10
+        )
+        if response.status_code == 200:
+            st.success("✅ API connection successful!")
+        else:
+            st.error(f"❌ API connection failed: HTTP {response.status_code}")
+            return
+    except Exception as e:
+        st.error(f"❌ Connection error: {str(e)}")
+        return
+    
+    # Test 2: Get live fixtures
+    st.markdown("### 🏃 Test 2: Live Fixtures")
+    try:
+        response = requests.get(
+            "https://v3.football.api-sports.io/fixtures",
+            headers=headers,
+            params={"live": "all"},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            live_matches = data.get("response", [])
+            
+            if live_matches:
+                st.success(f"✅ Found {len(live_matches)} LIVE matches!")
+                st.markdown("**Live matches:**")
+                for match in live_matches:
+                    league = match.get("league", {}).get("name", "?")
+                    home = match.get("teams", {}).get("home", {}).get("name", "?")
+                    away = match.get("teams", {}).get("away", {}).get("name", "?")
+                    score_home = match.get("goals", {}).get("home", "0")
+                    score_away = match.get("goals", {}).get("away", "0")
+                    elapsed = match.get("fixture", {}).get("status", {}).get("elapsed", "0")
+                    st.write(f"• **{league}**: {home} {score_home} - {score_away} {away} ({elapsed}')")
+            else:
+                st.warning("No live matches found at this moment")
+        else:
+            st.error(f"Failed to fetch live matches: HTTP {response.status_code}")
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+    
+    # Test 3: Get today's fixtures
+    st.markdown("### 📅 Test 3: Today's Fixtures")
+    today = datetime.now().strftime("%Y-%m-%d")
+    try:
+        response = requests.get(
+            "https://v3.football.api-sports.io/fixtures",
+            headers=headers,
+            params={"date": today},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            fixtures = data.get("response", [])
+            st.success(f"✅ Found {len(fixtures)} fixtures for today")
+            
+            if fixtures:
+                st.markdown("**Today's matches (sample):**")
+                for match in fixtures[:10]:
+                    league = match.get("league", {}).get("name", "?")
+                    home = match.get("teams", {}).get("home", {}).get("name", "?")
+                    away = match.get("teams", {}).get("away", {}).get("name", "?")
+                    status = match.get("fixture", {}).get("status", {}).get("short", "NS")
+                    st.write(f"• **{league}**: {home} vs {away} ({status})")
+        else:
+            st.error(f"Failed to fetch fixtures: HTTP {response.status_code}")
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+    
+    # Test 4: Check rate limit status
+    st.markdown("### 📊 Test 4: Rate Limit Status")
+    try:
+        response = requests.get(
+            "https://v3.football.api-sports.io/fixtures",
+            headers=headers,
+            params={"season": 2024, "league": 39},
+            timeout=10
+        )
+        
+        remaining = response.headers.get("x-ratelimit-requests-remaining", "Unknown")
+        st.markdown(f"**Requests remaining today:** {remaining}")
+    except Exception as e:
+        st.error(f"Error checking rate limit: {str(e)}")
+
+
+def test_api_sports_upcoming():
+    """Test API-SPORTS for upcoming matches"""
+    st.markdown("### 📋 UPCOMING MATCHES DIAGNOSTIC")
+    st.markdown("---")
+    
+    api_key = os.environ.get("API_SPORTS_KEY")
+    if not api_key:
+        st.error("❌ API_SPORTS_KEY not found")
+        return
+    
+    headers = {"x-apisports-key": api_key}
+    today = datetime.now().strftime("%Y-%m-%d")
+    next_week = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    
+    try:
+        response = requests.get(
+            "https://v3.football.api-sports.io/fixtures",
+            headers=headers,
+            params={"from": today, "to": next_week},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            fixtures = data.get("response", [])
+            
+            if fixtures:
+                st.success(f"✅ Found {len(fixtures)} upcoming matches for the next 7 days")
+                
+                # Group by league
+                leagues = {}
+                for match in fixtures:
+                    league = match.get("league", {}).get("name", "Unknown")
+                    if league not in leagues:
+                        leagues[league] = 0
+                    leagues[league] += 1
+                
+                st.markdown("**Matches by league:**")
+                for league, count in sorted(leagues.items(), key=lambda x: x[1], reverse=True)[:10]:
+                    st.write(f"• {league}: {count} matches")
+            else:
+                st.warning("No upcoming matches found in the next 7 days")
+        else:
+            st.error(f"Failed: HTTP {response.status_code}")
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CSS
@@ -105,18 +272,18 @@ SPORT_OPTIONS = {
     "NFL":          {"icon": "🏈",  "provider": "MySportsFeeds (Free)"},
     "MLB":          {"icon": "⚾",  "provider": "MySportsFeeds (Free)"},
     "NHL":          {"icon": "🏒",  "provider": "MySportsFeeds (Free)"},
-    "UFC":          {"icon": "🥊",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Formula 1":    {"icon": "🏎️", "provider": "TheSportsDB (Free - Unlimited)"},
-    "Tennis":       {"icon": "🎾",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Cricket":      {"icon": "🏏",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Golf":         {"icon": "⛳",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Volleyball":   {"icon": "🏐",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Handball":     {"icon": "🤾",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Rugby":        {"icon": "🏉",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Darts":        {"icon": "🎯",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Snooker":      {"icon": "🎱",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Table Tennis": {"icon": "🏓",  "provider": "TheSportsDB (Free - Unlimited)"},
-    "Esports":      {"icon": "🎮",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "UFC":          {"icon": "🥊",  "provider": "TheSportsDB (Free)"},
+    "Formula 1":    {"icon": "🏎️", "provider": "TheSportsDB (Free)"},
+    "Tennis":       {"icon": "🎾",  "provider": "TheSportsDB (Free)"},
+    "Cricket":      {"icon": "🏏",  "provider": "TheSportsDB (Free)"},
+    "Golf":         {"icon": "⛳",  "provider": "TheSportsDB (Free)"},
+    "Volleyball":   {"icon": "🏐",  "provider": "TheSportsDB (Free)"},
+    "Handball":     {"icon": "🤾",  "provider": "TheSportsDB (Free)"},
+    "Rugby":        {"icon": "🏉",  "provider": "TheSportsDB (Free)"},
+    "Darts":        {"icon": "🎯",  "provider": "TheSportsDB (Free)"},
+    "Snooker":      {"icon": "🎱",  "provider": "TheSportsDB (Free)"},
+    "Table Tennis": {"icon": "🏓",  "provider": "TheSportsDB (Free)"},
+    "Esports":      {"icon": "🎮",  "provider": "TheSportsDB (Free)"},
 }
 STATUS_OPTIONS = ["ALL", "LIVE", "UPCOMING", "FINISHED"]
 SPORT_NAMES    = list(SPORT_OPTIONS.keys())
@@ -261,35 +428,31 @@ def render_sidebar() -> tuple:
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
         
-        # ===== DIAGNOSTIC: API Key Status =====
-        with st.expander("🔧 DIAGNOSTIC: API Key Status", expanded=True):
-            # Check API-SPORTS_KEY (Primary free soccer API)
-            api_sports_key = os.environ.get("API_SPORTS_KEY")
-            if api_sports_key:
-                masked_key = f"{api_sports_key[:10]}...{api_sports_key[-4:]}" if len(api_sports_key) > 14 else "***"
-                st.success(f"✅ API_SPORTS_KEY found: {masked_key} (100 req/day FREE)")
-                st.caption("Used for: Soccer matches")
-            else:
-                st.warning("⚠️ API_SPORTS_KEY not found - Soccer data will be limited")
-                st.caption("Get free key at: https://api-sports.io/")
+        # ===== DIAGNOSTIC SECTION =====
+        with st.expander("🔧 DIAGNOSTIC TOOLS", expanded=False):
+            st.markdown("### API-SPORTS Diagnostics")
             
-            # Check ANTHROPIC_API_KEY
+            if st.button("🔴 TEST LIVE MATCHES", use_container_width=True):
+                test_api_sports_live()
+            
+            if st.button("📋 TEST UPCOMING MATCHES", use_container_width=True):
+                test_api_sports_upcoming()
+            
+            st.markdown("---")
+            st.markdown("### Environment Variables")
+            api_key = os.environ.get("API_SPORTS_KEY")
+            if api_key:
+                masked = f"{api_key[:10]}...{api_key[-4:]}" if len(api_key) > 14 else "***"
+                st.success(f"✅ API_SPORTS_KEY: {masked}")
+            else:
+                st.error("❌ API_SPORTS_KEY not set")
+            
             anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
             if anthropic_key:
-                masked_key = f"{anthropic_key[:10]}...{anthropic_key[-4:]}" if len(anthropic_key) > 14 else "***"
-                st.success(f"✅ ANTHROPIC_API_KEY found: {masked_key}")
-                st.caption("Used for: AI predictions")
+                masked = f"{anthropic_key[:10]}...{anthropic_key[-4:]}" if len(anthropic_key) > 14 else "***"
+                st.success(f"✅ ANTHROPIC_API_KEY: {masked}")
             else:
-                st.warning("⚠️ ANTHROPIC_API_KEY not found (AI predictions disabled)")
-                st.caption("Get key at: https://console.anthropic.com/")
-            
-            # Show free API info
-            st.markdown("---")
-            st.markdown("**📡 FREE APIs Active:**")
-            st.markdown("• **API-SPORTS**: 100 requests/day (Soccer)")
-            st.markdown("• **TheSportsDB**: Unlimited (UFC, F1, Tennis, Cricket, Golf)")
-            st.markdown("• **MySportsFeeds**: Free tier (NBA, NFL, MLB, NHL)")
-            st.markdown("• **Football-Data**: 10 req/min (Soccer backup)")
+                st.warning("⚠️ ANTHROPIC_API_KEY not set (AI disabled)")
         
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
 
@@ -552,62 +715,25 @@ def render_prediction_card(pred: MatchPrediction):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH CARDS (arena view) - UPDATED FOR FREE APIS (NO APIFY)
+# MATCH CARDS
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        # Sport-specific messages for free APIs (NO APIFY MENTIONS)
         if sport == "Soccer":
-            api_key = os.environ.get("API_SPORTS_KEY")
-            if api_key:
-                st.warning(
-                    f"⏳ **No {sport} matches found from API-SPORTS (Free API)**\n\n"
-                    "This could be because:\n"
-                    "• No matches are scheduled for today\n"
-                    "• API rate limit reached (100 requests/day)\n"
-                    "• The free tier API is temporarily unavailable\n\n"
-                    "**💡 Tips:**\n"
-                    "• Click **🔄 REFRESH DATA** to try again\n"
-                    "• Check your API-SPORTS usage at dashboard.api-sports.io\n"
-                    "• Wait a few minutes for rate limits to reset\n"
-                    "• Try selecting a different status filter (LIVE, UPCOMING, FINISHED)"
-                )
-            else:
-                st.info(
-                    f"📡 **Free API Available for {sport}**\n\n"
-                    "Add **API_SPORTS_KEY** to Render environment variables to enable soccer data.\n\n"
-                    "**Get a free API key:**\n"
-                    "1. Go to https://api-sports.io/\n"
-                    "2. Sign up for FREE account\n"
-                    "3. Copy your API key\n"
-                    "4. Add to Render: Settings → Environment Variables → API_SPORTS_KEY\n\n"
-                    "After adding the key, redeploy your app."
-                )
-        elif sport in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf", "Volleyball", "Handball", "Rugby", "Darts", "Snooker", "Table Tennis", "Esports"]:
-            st.info(
-                f"📡 **No {sport} matches found from TheSportsDB (Free API)**\n\n"
-                "This could be because:\n"
-                "• No events scheduled for today\n"
-                "• The season is currently off-season\n\n"
-                "**Note:** TheSportsDB is completely free with unlimited requests.\n\n"
-                "Try checking other sports or upcoming matches."
-            )
-        elif sport in ["NBA", "NFL", "MLB", "NHL"]:
-            st.info(
-                f"🏀 **No {sport} matches found from MySportsFeeds (Free API)**\n\n"
-                "This could be because:\n"
-                "• The season hasn't started yet\n"
-                "• No games scheduled for today\n\n"
-                "Try checking other sports or upcoming matches."
+            st.warning(
+                f"⚠️ **No {sport} matches found**\n\n"
+                "**Possible reasons:**\n"
+                "• No matches scheduled for today\n"
+                "• API rate limit reached (100 requests/day)\n"
+                "• Check your API key at dashboard.api-sports.io\n\n"
+                "**💡 Try these diagnostics:**\n"
+                "• Click **🔴 TEST LIVE MATCHES** in the sidebar\n"
+                "• Click **📋 TEST UPCOMING MATCHES**\n"
+                "• Try changing status filter to UPCOMING or FINISHED\n"
+                "• Click **🔄 REFRESH DATA** to try again"
             )
         else:
-            st.info(
-                f"📡 **No {sport} matches found.**\n\n"
-                "Try:\n"
-                "• Selecting a different sport\n"
-                "• Changing the status filter (LIVE, UPCOMING, FINISHED)\n"
-                "• Clicking **🔄 REFRESH DATA**"
-            )
+            st.info(f"📡 No {sport} matches found. Try a different sport or status filter.")
         return
 
     st.markdown(
@@ -773,22 +899,21 @@ def render_arena(sport: str, league_id: str, status: str):
 
     # Show which free API is being used
     if sport == "Soccer":
-        api_key_present = "✅" if os.environ.get("API_SPORTS_KEY") else "⚠️"
         st.markdown(
             f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
-            f'margin-bottom:10px;">📡 {api_key_present} {provider} | 100 requests/day FREE</div>',
+            f'margin-bottom:10px;">📡 {provider} | 100 requests/day FREE</div>',
             unsafe_allow_html=True,
         )
     elif sport in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf", "Volleyball", "Handball", "Rugby", "Darts", "Snooker", "Table Tennis", "Esports"]:
         st.markdown(
             f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
-            f'margin-bottom:10px;">📡 ✅ {provider} | Unlimited requests - COMPLETELY FREE</div>',
+            f'margin-bottom:10px;">📡 {provider} | Unlimited requests - COMPLETELY FREE</div>',
             unsafe_allow_html=True,
         )
     elif sport in ["NBA", "NFL", "MLB", "NHL"]:
         st.markdown(
             f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
-            f'margin-bottom:10px;">📡 🆓 {provider} | Free tier</div>',
+            f'margin-bottom:10px;">📡 {provider} | Free tier</div>',
             unsafe_allow_html=True,
         )
     else:
@@ -807,7 +932,7 @@ def render_arena(sport: str, league_id: str, status: str):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PREDICTIONS TAB — AI Batch Scanner + top picks
+# PREDICTIONS TAB
 # ══════════════════════════════════════════════════════════════════════════════
 def render_predictions(sport: str, league_id: str, status: str):
     st.markdown('<div class="section-header">🎯 AI PREDICTION CENTER</div>',
@@ -960,7 +1085,7 @@ def render_predictions(sport: str, league_id: str, status: str):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ANALYTICS TAB — AI performance tracking + log
+# ANALYTICS TAB
 # ══════════════════════════════════════════════════════════════════════════════
 def render_analytics():
     st.markdown('<div class="section-header">📊 AI PERFORMANCE ANALYTICS</div>',
