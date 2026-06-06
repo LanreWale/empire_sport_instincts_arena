@@ -14,8 +14,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 import time
 import logging
-import requests
-import json
 
 from empire_data_layer import EmpireDashboardData, APIConfig
 from empire_ai_engine  import (
@@ -48,157 +46,6 @@ REFRESH_INTERVAL = 30
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# DIAGNOSTIC FUNCTION
-# ══════════════════════════════════════════════════════════════════════════════
-def diagnose_apify_directly():
-    """Direct diagnostic to test Apify actor without going through the data layer"""
-    st.markdown("### 🔬 Apify FlashScore Direct Diagnostic")
-    st.markdown("---")
-    
-    api_key = os.environ.get("APIFY_API_KEY")
-    if not api_key:
-        st.error("❌ APIFY_API_KEY not found in environment variables")
-        return
-    
-    st.success(f"✅ APIFY_API_KEY found (length: {len(api_key)})")
-    
-    # Use the correct actor ID from your Apify account
-    actor_id = "crawlerbros~flashscore-scraper"
-    
-    # Test URL for football (not soccer!)
-    test_url = "https://www.flashscore.com/football/"
-    
-    st.markdown(f"**Actor ID:** `{actor_id}`")
-    st.markdown(f"**Test URL:** `{test_url}`")
-    st.markdown("---")
-    
-    # Step 1: Start the actor run
-    run_url = f"https://api.apify.com/v2/acts/{actor_id}/runs"
-    payload = {
-        "startUrls": [{"url": test_url}],
-        "maxItems": 50,
-        "proxyConfiguration": {"useApifyProxy": True}
-    }
-    
-    try:
-        with st.spinner("🚀 Starting Apify actor run..."):
-            start_response = requests.post(
-                run_url,
-                params={"token": api_key},
-                json=payload,
-                timeout=30
-            )
-        
-        if start_response.status_code != 201:
-            st.error(f"❌ Failed to start actor: HTTP {start_response.status_code}")
-            st.code(start_response.text[:500])
-            return
-        
-        run_data = start_response.json()
-        run_id = run_data.get('data', {}).get('id')
-        st.success(f"✅ Actor run started! Run ID: `{run_id}`")
-        
-        # Step 2: Wait for completion
-        st.markdown("---")
-        st.markdown("⏳ **Waiting for actor to complete...**")
-        progress_bar = st.progress(0)
-        status_placeholder = st.empty()
-        
-        start_time = time.time()
-        timeout = 65
-        
-        while time.time() - start_time < timeout:
-            status_url = f"https://api.apify.com/v2/actor-runs/{run_id}"
-            status_response = requests.get(status_url, params={"token": api_key})
-            
-            if status_response.status_code == 200:
-                status_data = status_response.json()
-                run_status = status_data.get('data', {}).get('status')
-                
-                # Update progress
-                elapsed = int(time.time() - start_time)
-                progress = min(elapsed / timeout, 0.95)
-                progress_bar.progress(progress)
-                status_placeholder.info(f"Status: **{run_status}** (elapsed: {elapsed}s)")
-                
-                if run_status == 'SUCCEEDED':
-                    progress_bar.progress(1.0)
-                    status_placeholder.success("✅ Actor run completed successfully!")
-                    
-                    # Step 3: Fetch results
-                    dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items"
-                    items_response = requests.get(dataset_url, params={"token": api_key, "limit": 100})
-                    
-                    if items_response.status_code == 200:
-                        items = items_response.json()
-                        st.markdown("---")
-                        st.markdown(f"### 📊 Results: {len(items)} items returned")
-                        
-                        if items and len(items) > 0:
-                            st.markdown("**First item (raw JSON):**")
-                            st.json(items[0])
-                            
-                            st.markdown("---")
-                            st.markdown("**📋 Parsed Matches:**")
-                            
-                            matches_found = []
-                            for idx, item in enumerate(items[:20]):
-                                # Try different field names
-                                home = (item.get('homeTeam') or item.get('home') or 
-                                       item.get('team1') or item.get('homeName'))
-                                away = (item.get('awayTeam') or item.get('away') or 
-                                       item.get('team2') or item.get('awayName'))
-                                
-                                # Handle nested objects
-                                if isinstance(home, dict):
-                                    home = home.get('name', home.get('shortName', str(home)))
-                                if isinstance(away, dict):
-                                    away = away.get('name', away.get('shortName', str(away)))
-                                
-                                if home and away and home != away:
-                                    matches_found.append(f"{home} vs {away}")
-                            
-                            if matches_found:
-                                for match in matches_found[:10]:
-                                    st.write(f"• {match}")
-                                if len(matches_found) > 10:
-                                    st.write(f"... and {len(matches_found) - 10} more")
-                                st.success(f"✅ Successfully parsed {len(matches_found)} matches!")
-                            else:
-                                st.warning("Could not parse team names from the data")
-                                st.markdown("**Raw item structure for debugging:**")
-                                # Show available keys
-                                st.json(list(items[0].keys()))
-                        else:
-                            st.warning("⚠️ No items returned from actor - FlashScore may have returned empty results")
-                    else:
-                        st.error(f"❌ Failed to fetch results: HTTP {items_response.status_code}")
-                    return
-                    
-                elif run_status in ['FAILED', 'TIMED-OUT', 'ABORTED']:
-                    progress_bar.progress(1.0)
-                    status_placeholder.error(f"❌ Actor run {run_status}")
-                    
-                    # Try to get error logs
-                    log_url = f"https://api.apify.com/v2/actor-runs/{run_id}/log"
-                    log_response = requests.get(log_url, params={"token": api_key})
-                    if log_response.status_code == 200:
-                        st.markdown("**Error Logs (last 1000 chars):**")
-                        st.code(log_response.text[-1000:])
-                    return
-            
-            time.sleep(2)
-        
-        st.error("❌ Timeout waiting for actor to complete (65 seconds)")
-        
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CSS
@@ -253,23 +100,23 @@ st.markdown("""
 # SPORT CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 SPORT_OPTIONS = {
-    "Soccer":       {"icon": "⚽",  "provider": "FlashScore/API-SPORTS"},
-    "NBA":          {"icon": "🏀",  "provider": "FlashScore/MySportsFeeds"},
-    "NFL":          {"icon": "🏈",  "provider": "FlashScore/MySportsFeeds"},
-    "MLB":          {"icon": "⚾",  "provider": "FlashScore/MySportsFeeds"},
-    "NHL":          {"icon": "🏒",  "provider": "FlashScore/MySportsFeeds"},
-    "UFC":          {"icon": "🥊",  "provider": "FlashScore/TheSportsDB"},
-    "Formula 1":    {"icon": "🏎️", "provider": "FlashScore/TheSportsDB"},
-    "Tennis":       {"icon": "🎾",  "provider": "FlashScore/TheSportsDB"},
-    "Cricket":      {"icon": "🏏",  "provider": "FlashScore/TheSportsDB"},
-    "Golf":         {"icon": "⛳",  "provider": "FlashScore/TheSportsDB"},
-    "Volleyball":   {"icon": "🏐",  "provider": "FlashScore"},
-    "Handball":     {"icon": "🤾",  "provider": "FlashScore"},
-    "Rugby":        {"icon": "🏉",  "provider": "FlashScore"},
-    "Darts":        {"icon": "🎯",  "provider": "FlashScore"},
-    "Snooker":      {"icon": "🎱",  "provider": "FlashScore"},
-    "Table Tennis": {"icon": "🏓",  "provider": "FlashScore"},
-    "Esports":      {"icon": "🎮",  "provider": "FlashScore"},
+    "Soccer":       {"icon": "⚽",  "provider": "API-SPORTS (Free)"},
+    "NBA":          {"icon": "🏀",  "provider": "MySportsFeeds (Free)"},
+    "NFL":          {"icon": "🏈",  "provider": "MySportsFeeds (Free)"},
+    "MLB":          {"icon": "⚾",  "provider": "MySportsFeeds (Free)"},
+    "NHL":          {"icon": "🏒",  "provider": "MySportsFeeds (Free)"},
+    "UFC":          {"icon": "🥊",  "provider": "TheSportsDB (Free)"},
+    "Formula 1":    {"icon": "🏎️", "provider": "TheSportsDB (Free)"},
+    "Tennis":       {"icon": "🎾",  "provider": "TheSportsDB (Free)"},
+    "Cricket":      {"icon": "🏏",  "provider": "TheSportsDB (Free)"},
+    "Golf":         {"icon": "⛳",  "provider": "TheSportsDB (Free)"},
+    "Volleyball":   {"icon": "🏐",  "provider": "TheSportsDB (Free)"},
+    "Handball":     {"icon": "🤾",  "provider": "TheSportsDB (Free)"},
+    "Rugby":        {"icon": "🏉",  "provider": "TheSportsDB (Free)"},
+    "Darts":        {"icon": "🎯",  "provider": "TheSportsDB (Free)"},
+    "Snooker":      {"icon": "🎱",  "provider": "TheSportsDB (Free)"},
+    "Table Tennis": {"icon": "🏓",  "provider": "TheSportsDB (Free)"},
+    "Esports":      {"icon": "🎮",  "provider": "TheSportsDB (Free)"},
 }
 STATUS_OPTIONS = ["ALL", "LIVE", "UPCOMING", "FINISHED"]
 SPORT_NAMES    = list(SPORT_OPTIONS.keys())
@@ -294,19 +141,12 @@ _init_state()
 # CACHE CLEAR
 # ══════════════════════════════════════════════════════════════════════════════
 def _get_apify_provider():
-    """Safe accessor — works with both old (.flashscore) and new (.apify) router."""
-    r = st.session_state.empire_data.router
-    return getattr(r, "apify", None) or getattr(r, "flashscore", None)
+    """Safe accessor — returns None since Apify is disabled."""
+    return None
 
 def _clear_all_caches():
     st.session_state.last_refresh = time.time()
     st.cache_data.clear()
-    r = st.session_state.empire_data.router
-    for attr in ["api_sports", "football_data", "msf", "tsdb", "apify",
-                 "flashscore", "my_sports_feeds", "the_sports_db"]:
-        p = getattr(r, attr, None)
-        if p is not None:
-            getattr(p, "clear", lambda: getattr(p, "cache", {}).clear())()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -355,7 +195,7 @@ def render_header():
     st.markdown(f'<div class="world-clock">🌍 {clock}</div>', unsafe_allow_html=True)
 
     live_color = "#00ff88" if data.is_live else "#FFD700"
-    live_text  = "LIVE MODE — APIs Connected" if data.is_live else "⚠️ API Keys Not Detected"
+    live_text  = "LIVE MODE — Free APIs Active" if data.is_live else "⚠️ API Configuration Needed"
     ai_color   = "#00ff88" if ai.available else "#ff6b6b"
     ai_text    = "Claude AI Active" if ai.available else "Set ANTHROPIC_API_KEY in Render"
     st.markdown(
@@ -416,7 +256,7 @@ def render_sidebar() -> tuple:
         st.markdown('<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:10px;margin:8px 0;">',
                     unsafe_allow_html=True)
         for s in data.router.get_provider_status():
-            color = "#00ff88" if "ONLINE" in s["status"] else "#888"
+            color = "#00ff88" if "ONLINE" in s["status"] else "#FFD700" if "FREE" in s["status"] else "#888"
             st.markdown(
                 f'<div style="font-family:Orbitron;font-size:.65rem;color:{color};padding:2px 0;">'
                 f'{s["name"]}: {s["status"]}</div>',
@@ -427,13 +267,14 @@ def render_sidebar() -> tuple:
         
         # ===== DIAGNOSTIC: API Key Status =====
         with st.expander("🔧 DIAGNOSTIC: API Key Status", expanded=True):
-            # Check APIFY_API_KEY
-            apify_key = os.environ.get("APIFY_API_KEY")
-            if apify_key:
-                masked_key = f"{apify_key[:10]}...{apify_key[-4:]}" if len(apify_key) > 14 else "***"
-                st.success(f"✅ APIFY_API_KEY found: {masked_key}")
+            # Check API-SPORTS_KEY (Primary free soccer API)
+            api_sports_key = os.environ.get("API_SPORTS_KEY")
+            if api_sports_key:
+                masked_key = f"{api_sports_key[:10]}...{api_sports_key[-4:]}" if len(api_sports_key) > 14 else "***"
+                st.success(f"✅ API_SPORTS_KEY found: {masked_key} (100 req/day FREE)")
             else:
-                st.error("❌ APIFY_API_KEY NOT found in environment")
+                st.warning("⚠️ API_SPORTS_KEY not found - Soccer data limited")
+                st.caption("Get free key at: https://api-sports.io/")
             
             # Check ANTHROPIC_API_KEY
             anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -442,23 +283,14 @@ def render_sidebar() -> tuple:
                 st.success(f"✅ ANTHROPIC_API_KEY found: {masked_key}")
             else:
                 st.warning("⚠️ ANTHROPIC_API_KEY not found (AI predictions disabled)")
+                st.caption("Get key at: https://console.anthropic.com/")
             
-            # Test Apify provider directly
+            # Show free API info
             st.markdown("---")
-            st.markdown("**🔌 Apify Provider Test:**")
-            provider = _get_apify_provider()
-            if provider:
-                st.success(f"✅ Provider object exists: {type(provider).__name__}")
-                if hasattr(provider, 'ok'):
-                    st.write(f"Provider.ok = {provider.ok}")
-                    if provider.ok:
-                        st.success("✅ Provider reports OK (ready to fetch)")
-                    else:
-                        st.error("❌ Provider reports NOT OK (failed to initialize)")
-                else:
-                    st.warning("⚠️ Provider has no 'ok' attribute")
-            else:
-                st.error("❌ No provider object found - check APIFY_API_KEY")
+            st.markdown("**📡 FREE APIs Active:**")
+            st.markdown("• API-SPORTS: 100 requests/day (Soccer)")
+            st.markdown("• TheSportsDB: Unlimited (UFC, F1, Tennis, Cricket, Golf)")
+            st.markdown("• MySportsFeeds: Free tier (NBA, NFL, MLB, NHL)")
         
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
 
@@ -525,11 +357,6 @@ def render_sidebar() -> tuple:
         if st.button("🔄 REFRESH DATA", use_container_width=True):
             _clear_all_caches()
             st.rerun()
-        
-        # ===== DIRECT APIFY DIAGNOSTIC BUTTON =====
-        st.markdown("---")
-        if st.button("🔬 DIRECT APIFY TEST", use_container_width=True):
-            diagnose_apify_directly()
 
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
 
@@ -566,8 +393,8 @@ def render_ticker():
     st.markdown(
         '<div class="ticker"><div class="ticker-text">'
         '🧠 CLAUDE AI ACTIVE — GENERATING PREDICTIONS IN REAL TIME &nbsp;·&nbsp; '
-        '⚽ Soccer &nbsp;·&nbsp; 🏀 NBA &nbsp;·&nbsp; 🏈 NFL &nbsp;·&nbsp; '
-        '⚾ MLB &nbsp;·&nbsp; 🏒 NHL &nbsp;·&nbsp; 🥊 UFC &nbsp;·&nbsp; '
+        '⚽ Soccer (API-SPORTS Free) &nbsp;·&nbsp; 🏀 NBA (MySportsFeeds Free) &nbsp;·&nbsp; '
+        '🏈 NFL &nbsp;·&nbsp; ⚾ MLB &nbsp;·&nbsp; 🏒 NHL &nbsp;·&nbsp; 🥊 UFC (TheSportsDB Free) &nbsp;·&nbsp; '
         '🏎️ F1 &nbsp;·&nbsp; 🎾 Tennis &nbsp;·&nbsp; 🏏 Cricket &nbsp;·&nbsp; ⛳ Golf'
         '</div></div>',
         unsafe_allow_html=True,
@@ -608,7 +435,6 @@ def _fetch_upcoming(_data_key: str, sport: str) -> pd.DataFrame:
 
 
 def _fetch_matches(sport: str, league_id: str, status: str) -> pd.DataFrame:
-    # Cache key changes every 30s for live, 5min for upcoming
     live_key     = str(int(time.time() // 30))
     upcoming_key = str(int(time.time() // 300))
     try:
@@ -618,13 +444,12 @@ def _fetch_matches(sport: str, league_id: str, status: str) -> pd.DataFrame:
             df = _fetch_upcoming(upcoming_key, sport)
         elif status == "FINISHED":
             df = pd.DataFrame()
-        else:  # ALL — combine live + upcoming
+        else:
             live_df     = _fetch_live(live_key, sport, league_id)
             upcoming_df = _fetch_upcoming(upcoming_key, sport)
             parts = [d for d in [live_df, upcoming_df] if not d.empty]
             df    = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
-        # Filter by specific league if selected
         if league_id != "ALL" and not df.empty and "LEAGUE" in df.columns:
             mask     = df["LEAGUE"].astype(str).str.contains(league_id, case=False, na=False)
             filtered = df[mask]
@@ -658,7 +483,6 @@ def render_prediction_card(pred: MatchPrediction):
 
     st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
 
-    # Header row
     h1, h2 = st.columns([3, 2])
     with h1:
         st.markdown(
@@ -677,7 +501,6 @@ def render_prediction_card(pred: MatchPrediction):
 
     st.markdown('<hr style="border-color:#2a2a3e;margin:12px 0;">', unsafe_allow_html=True)
 
-    # Confidence bar
     st.markdown(
         f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">'
         f'<span style="font-family:Orbitron;font-size:.75rem;color:#888;">CONFIDENCE</span>'
@@ -687,7 +510,6 @@ def render_prediction_card(pred: MatchPrediction):
         unsafe_allow_html=True,
     )
 
-    # Expected goals
     if pred.expected_goals and pred.expected_goals != "—":
         st.markdown(
             f'<div style="font-family:Orbitron;font-size:.8rem;color:#888;margin-bottom:8px;">'
@@ -695,12 +517,10 @@ def render_prediction_card(pred: MatchPrediction):
             unsafe_allow_html=True,
         )
 
-    # AI narrative
     if pred.ai_summary:
         st.markdown(f'<div class="ai-narrative">💬 {pred.ai_summary}</div>',
                     unsafe_allow_html=True)
 
-    # Factors & risks
     f1, f2 = st.columns(2)
     with f1:
         st.markdown(
@@ -719,7 +539,6 @@ def render_prediction_card(pred: MatchPrediction):
         for risk in pred.risk_factors[:3]:
             st.markdown(f'<div class="risk-item">{risk}</div>', unsafe_allow_html=True)
 
-    # Betting angle
     if pred.betting_angle and pred.betting_angle != "—":
         st.markdown(
             f'<div style="margin-top:12px;background:rgba(212,175,55,.1);'
@@ -734,34 +553,55 @@ def render_prediction_card(pred: MatchPrediction):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH CARDS (arena view) - FIXED VERSION
+# MATCH CARDS (arena view) - UPDATED FOR FREE APIS
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        # Check Apify provider status without using uninitialized session state
-        provider = _get_apify_provider()
-        fs_ok = provider and getattr(provider, 'ok', False)
-        
-        if fs_ok:
-            st.warning(
-                f"⏳ **No {sport} matches returned yet.**\n\n"
-                "FlashScore via Apify may need a moment to complete its first run. "
-                "**Click 🔄 REFRESH DATA** in the sidebar to trigger a fresh fetch. "
-                "Subsequent loads will be instant from cache.\n\n"
-                "**💡 Tip:** Click the **🔬 DIRECT APIFY TEST** button in the sidebar to diagnose the issue."
+        # Sport-specific messages for free APIs
+        if sport == "Soccer":
+            api_key = os.environ.get("API_SPORTS_KEY")
+            if api_key:
+                st.warning(
+                    f"⏳ **No {sport} matches found from API-SPORTS (Free API)**\n\n"
+                    "This could be because:\n"
+                    "• No matches are scheduled for today\n"
+                    "• API rate limit reached (100 requests/day)\n"
+                    "• The free tier API is temporarily unavailable\n\n"
+                    "**💡 Tips:**\n"
+                    "• Click **🔄 REFRESH DATA** to try again\n"
+                    "• Check your API-SPORTS usage at dashboard.api-sports.io\n"
+                    "• Wait a few minutes for rate limits to reset\n"
+                    "• Try selecting a different status filter (LIVE, UPCOMING, FINISHED)"
+                )
+            else:
+                st.info(
+                    f"📡 **Free API Available for {sport}**\n\n"
+                    "Add **API_SPORTS_KEY** to Render environment variables to enable soccer data.\n\n"
+                    "Get a free API key at: https://api-sports.io/"
+                )
+        elif sport in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf", "Volleyball", "Handball", "Rugby", "Darts", "Snooker", "Table Tennis", "Esports"]:
+            st.info(
+                f"📡 **No {sport} matches found from TheSportsDB (Free API)**\n\n"
+                "This could be because:\n"
+                "• No events scheduled for today\n"
+                "• The season is currently off-season\n\n"
+                "Try checking other sports or upcoming matches."
+            )
+        elif sport in ["NBA", "NFL", "MLB", "NHL"]:
+            st.info(
+                f"🏀 **No {sport} matches found from MySportsFeeds (Free API)**\n\n"
+                "This could be because:\n"
+                "• The season hasn't started yet\n"
+                "• No games scheduled for today\n\n"
+                "Try checking other sports or upcoming matches."
             )
         else:
-            st.error(
-                f"❌ **Cannot fetch {sport} matches**\n\n"
-                "**Possible issues:**\n"
-                "1. APIFY_API_KEY not set in Render Environment Variables\n"
-                "2. FlashScore actor not deployed/authorized\n"
-                "3. API quota exceeded or network issue\n\n"
-                "**Solutions:**\n"
-                "• Go to Render Dashboard → Environment Variables\n"
-                "• Add `APIFY_API_KEY` with your Apify API key\n"
-                "• Click **🔬 DIRECT APIFY TEST** for detailed diagnostics\n"
-                "• Check Render logs for detailed error messages"
+            st.info(
+                f"📡 **No {sport} matches found.**\n\n"
+                "Try:\n"
+                "• Selecting a different sport\n"
+                "• Changing the status filter (LIVE, UPCOMING, FINISHED)\n"
+                "• Clicking **🔄 REFRESH DATA**"
             )
         return
 
@@ -781,7 +621,6 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
         status_raw = row.get("STATUS",   "UPCOMING")
         color, bg, label = _status_style(status_raw)
 
-        # Quick AI confidence badge (from cache if available)
         cached_pred = ai.cache.get(match_id, sport)
         ai_badge = ""
         if cached_pred and hasattr(cached_pred, "confidence"):
@@ -862,7 +701,6 @@ def render_match_detail():
             st.session_state.pop(k, None)
         st.rerun()
 
-    # Match info row
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("##### 📋 MATCH INFORMATION")
@@ -887,7 +725,6 @@ def render_match_detail():
 
     st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
-    # AI Prediction section
     st.markdown(
         '<div style="font-family:Orbitron;font-size:1rem;color:#D4AF37;'
         'text-align:center;margin:10px 0;">🧠 CLAUDE AI PREDICTION ENGINE</div>',
@@ -901,7 +738,6 @@ def render_match_detail():
         )
         return
 
-    # Check cache first; generate if missing
     cached = ai.cache.get(match_id, sport)
     force  = st.button("🔄 Regenerate Prediction", key=f"regen_{match_id}")
 
@@ -930,55 +766,36 @@ def render_arena(sport: str, league_id: str, status: str):
         unsafe_allow_html=True,
     )
 
-    # ===== DIAGNOSTIC EXPANDER =====
-    with st.expander("🔍 Fetch Diagnostics", expanded=False):
-        st.markdown(f"**Sport:** {sport}")
-        st.markdown(f"**League ID:** {league_id}")
-        st.markdown(f"**Status:** {status}")
-        
-        # Check Apify provider
-        apify_provider = _get_apify_provider()
-        st.markdown(f"**Apify Provider:** {apify_provider is not None}")
-        if apify_provider:
-            st.markdown(f"**Provider Type:** {type(apify_provider).__name__}")
-            st.markdown(f"**Provider.ok:** {getattr(apify_provider, 'ok', 'N/A')}")
-        
-        st.markdown(f"**Fetch mode:** {'Live' if status == 'LIVE' else 'Upcoming' if status == 'UPCOMING' else 'All'}")
-    
-    # Provider + status badge
-    fs_online   = bool(_get_apify_provider() and getattr(_get_apify_provider(), 'ok', False))
-    badge_color = "#00ff88" if fs_online else "#FFD700"
-    badge_text  = "FlashScore LIVE" if fs_online else "Legacy Provider"
-    st.markdown(
-        f'<div style="color:{badge_color};font-family:Orbitron;font-size:.7rem;'
-        f'margin-bottom:10px;">📡 {badge_text} | {provider}</div>',
-        unsafe_allow_html=True,
-    )
+    # Show which free API is being used
+    if sport == "Soccer":
+        st.markdown(
+            f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
+            f'margin-bottom:10px;">📡 FREE API: {provider} | 100 requests/day</div>',
+            unsafe_allow_html=True,
+        )
+    elif sport in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf", "Volleyball", "Handball", "Rugby", "Darts", "Snooker", "Table Tennis", "Esports"]:
+        st.markdown(
+            f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
+            f'margin-bottom:10px;">📡 FREE API: {provider} | Unlimited requests</div>',
+            unsafe_allow_html=True,
+        )
+    elif sport in ["NBA", "NFL", "MLB", "NHL"]:
+        st.markdown(
+            f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
+            f'margin-bottom:10px;">📡 FREE API: {provider} | Free tier</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f'<div style="color:#FFD700;font-family:Orbitron;font-size:.7rem;'
+            f'margin-bottom:10px;">📡 Provider: {provider}</div>',
+            unsafe_allow_html=True,
+        )
 
-    # Show spinner while Apify run-sync is in progress
-    spinner_msg = (
-        f"⚡ Fetching {sport} matches from FlashScore..."
-        if fs_online else
-        f"📡 Fetching {sport} matches..."
-    )
-    
-    # ===== TIMING DIAGNOSTIC =====
-    start_time = time.time()
+    spinner_msg = f"📡 Fetching {sport} matches from free APIs..."
     
     with st.spinner(spinner_msg):
         df = _fetch_matches(sport, league_id, status)
-    
-    elapsed = time.time() - start_time
-    
-    # Show fetch results
-    with st.expander("📊 Fetch Results", expanded=False):
-        st.markdown(f"**Fetch time:** {elapsed:.2f} seconds")
-        st.markdown(f"**DataFrame empty:** {df.empty}")
-        st.markdown(f"**Rows returned:** {len(df)}")
-        if not df.empty:
-            st.markdown(f"**Columns:** {', '.join(df.columns[:10])}...")
-            first_row = df.iloc[0]
-            st.markdown(f"**Sample match:** {first_row.get('HOME_TEAM', 'N/A')} vs {first_row.get('AWAY_TEAM', 'N/A')}")
 
     render_match_cards(df, sport)
 
@@ -997,7 +814,6 @@ def render_predictions(sport: str, league_id: str, status: str):
         )
         return
 
-    # Metrics row
     stats = ai.get_stats()
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("AI CALLS",      stats["api_calls"])
@@ -1007,14 +823,12 @@ def render_predictions(sport: str, league_id: str, status: str):
 
     st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
-    # Fetch current matches
     df = _fetch_matches(sport, league_id, status)
 
     if df.empty:
         st.info("No matches to analyse. Select a sport and ensure the status filter includes upcoming matches.")
         return
 
-    # Auto-scan toggle
     col_scan, col_info = st.columns([2, 3])
     with col_scan:
         run_scan = st.button("⚡ RUN AI BATCH SCANNER", use_container_width=True)
@@ -1045,7 +859,6 @@ def render_predictions(sport: str, league_id: str, status: str):
                 unsafe_allow_html=True,
             )
 
-            # Top picks
             if result.high_conf_picks:
                 st.markdown(
                     '<div style="font-family:Orbitron;font-size:.9rem;color:#D4AF37;'
@@ -1074,7 +887,6 @@ def render_predictions(sport: str, league_id: str, status: str):
                         unsafe_allow_html=True,
                     )
 
-            # Value bets
             if result.value_bets:
                 st.markdown(
                     '<div style="font-family:Orbitron;font-size:.9rem;color:#00ff88;'
@@ -1098,7 +910,6 @@ def render_predictions(sport: str, league_id: str, status: str):
 
     st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
-    # Individual match predictions
     st.markdown(
         '<div style="font-family:Orbitron;font-size:.9rem;color:#D4AF37;margin-bottom:12px;">'
         '🔍 INDIVIDUAL MATCH ANALYSIS</div>',
@@ -1151,7 +962,6 @@ def render_analytics():
 
     stats = ai.get_stats()
 
-    # Top metrics
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("TOTAL AI CALLS",  stats["api_calls"])
     m2.metric("CACHED PREDS",    stats["cache_active"])
@@ -1161,7 +971,6 @@ def render_analytics():
 
     st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
-    # AI status card
     ai_col  = "#00ff88" if ai.available else "#ff6b6b"
     ai_stat = "ONLINE" if ai.available else "OFFLINE — Set ANTHROPIC_API_KEY"
     st.markdown(
@@ -1178,7 +987,6 @@ def render_analytics():
         unsafe_allow_html=True,
     )
 
-    # Prediction log table
     pred_log = ai.get_prediction_log()
     if pred_log:
         st.markdown(
@@ -1193,21 +1001,20 @@ def render_analytics():
 
     st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
-    # Provider status
     st.markdown(
         '<div style="font-family:Orbitron;font-size:.85rem;color:#D4AF37;margin-bottom:12px;">'
         '⚡ DATA PROVIDER STATUS</div>',
         unsafe_allow_html=True,
     )
     for s in data.router.get_provider_status():
-        color = "#00ff88" if "ONLINE" in s["status"] else "#888"
+        color = "#00ff88" if "ONLINE" in s["status"] else "#FFD700" if "FREE" in s["status"] else "#888"
         st.markdown(
             f'<div class="stat-row">'
             f'<span class="stat-label">{s["name"]}</span>'
             f'<span style="color:{color};font-weight:700;">{s["status"]}</span></div>',
             unsafe_allow_html=True,
         )
-    # Claude
+
     ai_col = "#00ff88" if ai.available else "#ff6b6b"
     ai_s   = "🟢 ONLINE" if ai.available else "🔴 KEY MISSING"
     st.markdown(
