@@ -100,23 +100,23 @@ st.markdown("""
 # SPORT CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 SPORT_OPTIONS = {
-    "Soccer":       {"icon": "⚽",  "provider": "API-SPORTS (Free)"},
+    "Soccer":       {"icon": "⚽",  "provider": "API-SPORTS (Free - 100/day)"},
     "NBA":          {"icon": "🏀",  "provider": "MySportsFeeds (Free)"},
     "NFL":          {"icon": "🏈",  "provider": "MySportsFeeds (Free)"},
     "MLB":          {"icon": "⚾",  "provider": "MySportsFeeds (Free)"},
     "NHL":          {"icon": "🏒",  "provider": "MySportsFeeds (Free)"},
-    "UFC":          {"icon": "🥊",  "provider": "TheSportsDB (Free)"},
-    "Formula 1":    {"icon": "🏎️", "provider": "TheSportsDB (Free)"},
-    "Tennis":       {"icon": "🎾",  "provider": "TheSportsDB (Free)"},
-    "Cricket":      {"icon": "🏏",  "provider": "TheSportsDB (Free)"},
-    "Golf":         {"icon": "⛳",  "provider": "TheSportsDB (Free)"},
-    "Volleyball":   {"icon": "🏐",  "provider": "TheSportsDB (Free)"},
-    "Handball":     {"icon": "🤾",  "provider": "TheSportsDB (Free)"},
-    "Rugby":        {"icon": "🏉",  "provider": "TheSportsDB (Free)"},
-    "Darts":        {"icon": "🎯",  "provider": "TheSportsDB (Free)"},
-    "Snooker":      {"icon": "🎱",  "provider": "TheSportsDB (Free)"},
-    "Table Tennis": {"icon": "🏓",  "provider": "TheSportsDB (Free)"},
-    "Esports":      {"icon": "🎮",  "provider": "TheSportsDB (Free)"},
+    "UFC":          {"icon": "🥊",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Formula 1":    {"icon": "🏎️", "provider": "TheSportsDB (Free - Unlimited)"},
+    "Tennis":       {"icon": "🎾",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Cricket":      {"icon": "🏏",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Golf":         {"icon": "⛳",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Volleyball":   {"icon": "🏐",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Handball":     {"icon": "🤾",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Rugby":        {"icon": "🏉",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Darts":        {"icon": "🎯",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Snooker":      {"icon": "🎱",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Table Tennis": {"icon": "🏓",  "provider": "TheSportsDB (Free - Unlimited)"},
+    "Esports":      {"icon": "🎮",  "provider": "TheSportsDB (Free - Unlimited)"},
 }
 STATUS_OPTIONS = ["ALL", "LIVE", "UPCOMING", "FINISHED"]
 SPORT_NAMES    = list(SPORT_OPTIONS.keys())
@@ -140,10 +140,6 @@ _init_state()
 # ══════════════════════════════════════════════════════════════════════════════
 # CACHE CLEAR
 # ══════════════════════════════════════════════════════════════════════════════
-def _get_apify_provider():
-    """Safe accessor — returns None since Apify is disabled."""
-    return None
-
 def _clear_all_caches():
     st.session_state.last_refresh = time.time()
     st.cache_data.clear()
@@ -272,8 +268,9 @@ def render_sidebar() -> tuple:
             if api_sports_key:
                 masked_key = f"{api_sports_key[:10]}...{api_sports_key[-4:]}" if len(api_sports_key) > 14 else "***"
                 st.success(f"✅ API_SPORTS_KEY found: {masked_key} (100 req/day FREE)")
+                st.caption("Used for: Soccer matches")
             else:
-                st.warning("⚠️ API_SPORTS_KEY not found - Soccer data limited")
+                st.warning("⚠️ API_SPORTS_KEY not found - Soccer data will be limited")
                 st.caption("Get free key at: https://api-sports.io/")
             
             # Check ANTHROPIC_API_KEY
@@ -281,6 +278,7 @@ def render_sidebar() -> tuple:
             if anthropic_key:
                 masked_key = f"{anthropic_key[:10]}...{anthropic_key[-4:]}" if len(anthropic_key) > 14 else "***"
                 st.success(f"✅ ANTHROPIC_API_KEY found: {masked_key}")
+                st.caption("Used for: AI predictions")
             else:
                 st.warning("⚠️ ANTHROPIC_API_KEY not found (AI predictions disabled)")
                 st.caption("Get key at: https://console.anthropic.com/")
@@ -288,9 +286,10 @@ def render_sidebar() -> tuple:
             # Show free API info
             st.markdown("---")
             st.markdown("**📡 FREE APIs Active:**")
-            st.markdown("• API-SPORTS: 100 requests/day (Soccer)")
-            st.markdown("• TheSportsDB: Unlimited (UFC, F1, Tennis, Cricket, Golf)")
-            st.markdown("• MySportsFeeds: Free tier (NBA, NFL, MLB, NHL)")
+            st.markdown("• **API-SPORTS**: 100 requests/day (Soccer)")
+            st.markdown("• **TheSportsDB**: Unlimited (UFC, F1, Tennis, Cricket, Golf)")
+            st.markdown("• **MySportsFeeds**: Free tier (NBA, NFL, MLB, NHL)")
+            st.markdown("• **Football-Data**: 10 req/min (Soccer backup)")
         
         st.markdown("<hr style='border-color:#333;margin:10px 0;'>", unsafe_allow_html=True)
 
@@ -553,11 +552,11 @@ def render_prediction_card(pred: MatchPrediction):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH CARDS (arena view) - UPDATED FOR FREE APIS
+# MATCH CARDS (arena view) - UPDATED FOR FREE APIS (NO APIFY)
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        # Sport-specific messages for free APIs
+        # Sport-specific messages for free APIs (NO APIFY MENTIONS)
         if sport == "Soccer":
             api_key = os.environ.get("API_SPORTS_KEY")
             if api_key:
@@ -577,7 +576,12 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
                 st.info(
                     f"📡 **Free API Available for {sport}**\n\n"
                     "Add **API_SPORTS_KEY** to Render environment variables to enable soccer data.\n\n"
-                    "Get a free API key at: https://api-sports.io/"
+                    "**Get a free API key:**\n"
+                    "1. Go to https://api-sports.io/\n"
+                    "2. Sign up for FREE account\n"
+                    "3. Copy your API key\n"
+                    "4. Add to Render: Settings → Environment Variables → API_SPORTS_KEY\n\n"
+                    "After adding the key, redeploy your app."
                 )
         elif sport in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf", "Volleyball", "Handball", "Rugby", "Darts", "Snooker", "Table Tennis", "Esports"]:
             st.info(
@@ -585,6 +589,7 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
                 "This could be because:\n"
                 "• No events scheduled for today\n"
                 "• The season is currently off-season\n\n"
+                "**Note:** TheSportsDB is completely free with unlimited requests.\n\n"
                 "Try checking other sports or upcoming matches."
             )
         elif sport in ["NBA", "NFL", "MLB", "NHL"]:
@@ -768,21 +773,22 @@ def render_arena(sport: str, league_id: str, status: str):
 
     # Show which free API is being used
     if sport == "Soccer":
+        api_key_present = "✅" if os.environ.get("API_SPORTS_KEY") else "⚠️"
         st.markdown(
             f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
-            f'margin-bottom:10px;">📡 FREE API: {provider} | 100 requests/day</div>',
+            f'margin-bottom:10px;">📡 {api_key_present} {provider} | 100 requests/day FREE</div>',
             unsafe_allow_html=True,
         )
     elif sport in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf", "Volleyball", "Handball", "Rugby", "Darts", "Snooker", "Table Tennis", "Esports"]:
         st.markdown(
             f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
-            f'margin-bottom:10px;">📡 FREE API: {provider} | Unlimited requests</div>',
+            f'margin-bottom:10px;">📡 ✅ {provider} | Unlimited requests - COMPLETELY FREE</div>',
             unsafe_allow_html=True,
         )
     elif sport in ["NBA", "NFL", "MLB", "NHL"]:
         st.markdown(
             f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
-            f'margin-bottom:10px;">📡 FREE API: {provider} | Free tier</div>',
+            f'margin-bottom:10px;">📡 🆓 {provider} | Free tier</div>',
             unsafe_allow_html=True,
         )
     else:
