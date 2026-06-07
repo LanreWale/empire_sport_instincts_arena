@@ -4,6 +4,7 @@ OPTIMIZED FOR FREE TIER - 100 requests/day
 - Conditional fetching (only when needed)
 - Request logging and tracking
 - Automatic fallback to Football-Data.org when rate limit approached
+- CORRECTED: Uses "Football" as sport name (matches API)
 """
 
 import os, json, time, hashlib, base64, requests, threading, logging
@@ -40,8 +41,8 @@ class APIConfig:
     MSF_URL           = "https://api.mysportsfeeds.com/v2.1/pull"
 
     # Cache TTLs - INCREASED to reduce API calls
-    TTL_LIVE     = 60      # Cache live matches for 60 seconds (was 30)
-    TTL_UPCOMING = 900     # Cache upcoming for 15 minutes (was 600)
+    TTL_LIVE     = 60      # Cache live matches for 60 seconds
+    TTL_UPCOMING = 900     # Cache upcoming for 15 minutes
     TTL_LEAGUES  = 86400   # Cache leagues for 24 hours
     TIMEOUT      = 12
     RETRIES      = 2
@@ -51,7 +52,7 @@ class APIConfig:
 # STATIC LEAGUE LISTS (ZERO API calls - always available)
 # ═══════════════════════════════════════════════════════════════════════════════
 STATIC_LEAGUES: Dict[str, List[Dict]] = {
-    "Soccer": [
+    "Football": [
         {"id": "39",  "name": "Premier League",                "country": "England"},
         {"id": "40",  "name": "Championship",                  "country": "England"},
         {"id": "140", "name": "La Liga",                       "country": "Spain"},
@@ -235,6 +236,7 @@ class APISportsProvider(DataProvider):
         return max(0, 100 - self.request_count)
 
     def get_live_matches(self) -> List[Match]:
+        """Get live matches - API-SPORTS returns football data"""
         if not self._check_rate_limit():
             return []
         
@@ -259,8 +261,8 @@ class APISportsProvider(DataProvider):
         self._set(cache_key, matches)
         return matches
 
-    def get_upcoming_matches(self, days: int = 3) -> List[Match]:
-        """Get upcoming matches - reduced to 3 days to save requests"""
+    def get_upcoming_matches(self, days: int = 7) -> List[Match]:
+        """Get upcoming matches - API-SPORTS returns football data"""
         if not self._check_rate_limit():
             return []
         
@@ -457,12 +459,12 @@ class EmpireDataRouter:
 
     def get_live_matches(self, sport: str, league_id: str = None) -> pd.DataFrame:
         matches = []
-        if sport == "Soccer":
+        if sport == "Football":
             # Try API-SPORTS first if not rate limited
             if not self.api_sports.rate_limit_exhausted:
                 matches = self.api_sports.get_live_matches()
                 if matches:
-                    self._log("API-SPORTS", "SUCCESS", f"{len(matches)} live soccer matches")
+                    self._log("API-SPORTS", "SUCCESS", f"{len(matches)} live football matches")
                 else:
                     self._log("API-SPORTS", "NO LIVE", "No live matches currently")
             else:
@@ -473,28 +475,29 @@ class EmpireDataRouter:
                 fd_matches = self.football_data.get_today_matches()
                 matches = [m for m in fd_matches if m.status == "LIVE"]
                 if matches:
-                    self._log("Football-Data", "SUCCESS", f"{len(matches)} live soccer matches")
+                    self._log("Football-Data", "SUCCESS", f"{len(matches)} live football matches")
         
         return pd.DataFrame([m.to_dataframe_row() for m in matches]) if matches else pd.DataFrame()
 
     def get_upcoming_matches(self, sport: str) -> pd.DataFrame:
         matches = []
-        if sport == "Soccer":
-            # Try Football-Data first (no daily limit, more reliable for upcoming)
-            fd_matches = self.football_data.get_today_matches()
-            matches = [m for m in fd_matches if m.status == "SCHEDULED"]
-            if matches:
-                self._log("Football-Data", "SUCCESS", f"{len(matches)} upcoming soccer matches")
-            else:
-                self._log("Football-Data", "EMPTY", "No upcoming matches found")
-            
-            # Only use API-SPORTS if we have requests remaining and Football-Data found nothing
-            if not matches and not self.api_sports.rate_limit_exhausted and self.api_sports.get_remaining_requests() > 10:
-                matches = self.api_sports.get_upcoming_matches(days=3)
+        if sport == "Football":
+            # Try API-SPORTS first
+            if not self.api_sports.rate_limit_exhausted and self.api_sports.get_remaining_requests() > 10:
+                matches = self.api_sports.get_upcoming_matches(days=7)
                 if matches:
-                    self._log("API-SPORTS", "SUCCESS", f"{len(matches)} upcoming soccer matches")
+                    self._log("API-SPORTS", "SUCCESS", f"{len(matches)} upcoming football matches")
                 else:
                     self._log("API-SPORTS", "EMPTY", "No upcoming matches found")
+            
+            # Fallback to Football-Data if API-SPORTS found nothing
+            if not matches:
+                fd_matches = self.football_data.get_today_matches()
+                matches = [m for m in fd_matches if m.status == "SCHEDULED"]
+                if matches:
+                    self._log("Football-Data", "SUCCESS", f"{len(matches)} upcoming football matches")
+                else:
+                    self._log("Football-Data", "EMPTY", "No upcoming matches found")
         
         return pd.DataFrame([m.to_dataframe_row() for m in matches]) if matches else pd.DataFrame()
 
