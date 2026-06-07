@@ -419,7 +419,7 @@ def render_sidebar() -> tuple:
         st.markdown('<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:10px;margin:8px 0;">',
                     unsafe_allow_html=True)
         for s in data.router.get_provider_status():
-            color = "#00ff88" if "ONLINE" in s["status"] else "#FFD700" if "FREE" in s["status"] else "#888"
+            color = "#00ff88" if "ONLINE" in s["status"] else "#FFD700" if "LOW" in s["status"] else "#ff6b6b" if "RATE" in s["status"] else "#888"
             st.markdown(
                 f'<div style="font-family:Orbitron;font-size:.65rem;color:{color};padding:2px 0;">'
                 f'{s["name"]}: {s["status"]}</div>',
@@ -446,6 +446,11 @@ def render_sidebar() -> tuple:
                 masked = f"{api_key[:10]}...{api_key[-4:]}" if len(api_key) > 14 else "***"
                 st.success(f"✅ API_SPORTS_KEY is set: {masked}")
                 st.info(f"Key length: {len(api_key)} characters")
+                
+                # Show remaining requests if available
+                if hasattr(data.router, 'api_sports'):
+                    remaining = data.router.api_sports.get_remaining_requests()
+                    st.info(f"📊 Requests remaining today: {remaining}/100")
             else:
                 st.error("❌ API_SPORTS_KEY is NOT set in environment variables")
         
@@ -569,10 +574,14 @@ def _status_style(status: str):
     return "#FFAA00", "rgba(255,170,0,.15)", "UPCOMING"
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def _fetch_live(_data_key: str, sport: str, league_id: str) -> pd.DataFrame:
-    """Cached live match fetch — refreshes every 30s, never blocks UI."""
+    """Cached live match fetch — ONLY when needed (CONDITIONAL)"""
     try:
+        # Only fetch if status filter requires live matches
+        current_status = st.session_state.get("selected_status", "UPCOMING")
+        if current_status not in ["LIVE", "ALL"]:
+            return pd.DataFrame()
         return st.session_state.empire_data.get_live_matches_df(
             sport, None if league_id == "ALL" else league_id
         )
@@ -581,10 +590,14 @@ def _fetch_live(_data_key: str, sport: str, league_id: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def _fetch_upcoming(_data_key: str, sport: str) -> pd.DataFrame:
-    """Cached upcoming match fetch — refreshes every 5 min."""
+    """Cached upcoming match fetch — ONLY when needed (CONDITIONAL)"""
     try:
+        # Only fetch if status filter requires upcoming matches
+        current_status = st.session_state.get("selected_status", "UPCOMING")
+        if current_status not in ["UPCOMING", "ALL"]:
+            return pd.DataFrame()
         return st.session_state.empire_data.get_upcoming_matches_df(sport)
     except Exception as e:
         logger.error(f"_fetch_upcoming: {e}")
@@ -592,8 +605,8 @@ def _fetch_upcoming(_data_key: str, sport: str) -> pd.DataFrame:
 
 
 def _fetch_matches(sport: str, league_id: str, status: str) -> pd.DataFrame:
-    live_key     = str(int(time.time() // 30))
-    upcoming_key = str(int(time.time() // 300))
+    live_key     = str(int(time.time() // 60))
+    upcoming_key = str(int(time.time() // 900))
     try:
         if status == "LIVE":
             df = _fetch_live(live_key, sport, league_id)
@@ -715,18 +728,36 @@ def render_prediction_card(pred: MatchPrediction):
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
         if sport == "Soccer":
-            st.warning(
-                f"⚠️ **No {sport} matches found**\n\n"
-                "**Possible reasons:**\n"
-                "• No matches scheduled for today\n"
-                "• API rate limit reached (100 requests/day)\n"
-                "• Check your API key at dashboard.api-sports.io\n\n"
-                "**💡 Try these diagnostics:**\n"
-                "• Click **🔴 TEST LIVE MATCHES** in the sidebar\n"
-                "• Click **📋 TEST UPCOMING MATCHES** in the sidebar\n"
-                "• Try changing status filter to UPCOMING or FINISHED\n"
-                "• Click **🔄 REFRESH DATA** to try again"
-            )
+            # Check if we have remaining requests
+            remaining = 0
+            if hasattr(data.router, 'api_sports'):
+                remaining = data.router.api_sports.get_remaining_requests()
+            
+            if remaining == 0:
+                st.warning(
+                    f"⚠️ **API-SPORTS rate limit reached for today (0/100 requests remaining)**\n\n"
+                    "**What's happening:**\n"
+                    "• Your free tier limit of 100 requests per day has been used up\n"
+                    "• This can happen from multiple deployments or frequent refreshes\n\n"
+                    "**Solutions:**\n"
+                    "• **Wait until midnight UTC** for your rate limit to reset\n"
+                    "• **Create a new free account** at api-sports.io with a different email\n"
+                    "• **Click 🔴 TEST LIVE MATCHES** in the sidebar to check current status\n\n"
+                    "**💡 Tip:** The app now uses conditional fetching and longer caching to prevent this."
+                )
+            else:
+                st.warning(
+                    f"⚠️ **No {sport} matches found**\n\n"
+                    f"**Requests remaining today:** {remaining}/100\n\n"
+                    "**Possible reasons:**\n"
+                    "• No matches scheduled for today\n"
+                    "• API temporarily unavailable\n"
+                    "• Try changing status filter to UPCOMING or FINISHED\n\n"
+                    "**💡 Try these diagnostics:**\n"
+                    "• Click **🔴 TEST LIVE MATCHES** in the sidebar\n"
+                    "• Click **📋 TEST UPCOMING MATCHES** in the sidebar\n"
+                    "• Click **🔄 REFRESH DATA** to try again"
+                )
         else:
             st.info(f"📡 No {sport} matches found. Try a different sport or status filter.")
         return
@@ -892,13 +923,30 @@ def render_arena(sport: str, league_id: str, status: str):
         unsafe_allow_html=True,
     )
 
-    # Show which free API is being used
+    # Show which free API is being used with rate limit info
     if sport == "Soccer":
-        st.markdown(
-            f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
-            f'margin-bottom:10px;">📡 {provider} | 100 requests/day FREE</div>',
-            unsafe_allow_html=True,
-        )
+        remaining = 0
+        if hasattr(data.router, 'api_sports'):
+            remaining = data.router.api_sports.get_remaining_requests()
+        
+        if remaining == 0:
+            st.markdown(
+                f'<div style="color:#ff6b6b;font-family:Orbitron;font-size:.7rem;'
+                f'margin-bottom:10px;">📡 {provider} | ⚠️ RATE LIMIT REACHED - 0/100 requests today</div>',
+                unsafe_allow_html=True,
+            )
+        elif remaining < 20:
+            st.markdown(
+                f'<div style="color:#FFD700;font-family:Orbitron;font-size:.7rem;'
+                f'margin-bottom:10px;">📡 {provider} | 🟡 LOW QUOTA - {remaining}/100 requests remaining today</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
+                f'margin-bottom:10px;">📡 {provider} | 🟢 {remaining}/100 requests remaining today</div>',
+                unsafe_allow_html=True,
+            )
     elif sport in ["UFC", "Formula 1", "Tennis", "Cricket", "Golf", "Volleyball", "Handball", "Rugby", "Darts", "Snooker", "Table Tennis", "Esports"]:
         st.markdown(
             f'<div style="color:#00ff88;font-family:Orbitron;font-size:.7rem;'
@@ -1133,7 +1181,7 @@ def render_analytics():
         unsafe_allow_html=True,
     )
     for s in data.router.get_provider_status():
-        color = "#00ff88" if "ONLINE" in s["status"] else "#FFD700" if "FREE" in s["status"] else "#888"
+        color = "#00ff88" if "ONLINE" in s["status"] else "#FFD700" if "LOW" in s["status"] else "#ff6b6b" if "RATE" in s["status"] else "#888"
         st.markdown(
             f'<div class="stat-row">'
             f'<span class="stat-label">{s["name"]}</span>'
