@@ -1,6 +1,9 @@
 """
 EMPIRE SPORT INSTINCTS ARENA — Data Layer
-Using NEW API-SPORTS account for live soccer data
+OPTIMIZED FOR FREE TIER - 100 requests/day
+- Conditional fetching (only when needed)
+- Request logging and tracking
+- Automatic fallback to Football-Data.org when rate limit approached
 """
 
 import os, json, time, hashlib, base64, requests, threading, logging
@@ -21,43 +24,59 @@ class APIConfig:
     @staticmethod
     def _e(k, d=""): return str(os.getenv(k, d)).strip()
 
-    # NEW API-SPORTS KEY (Primary)
+    # PRIMARY API (100 requests/day)
     API_SPORTS_KEY    = _e("API_SPORTS_KEY")
     API_SPORTS_URL    = "https://v3.football.api-sports.io"
     
-    # Backup APIs
+    # BACKUP API (10 requests/min - no daily limit)
     FOOTBALL_DATA_KEY = _e("FOOTBALL_DATA_KEY")
     FOOTBALL_DATA_URL = "https://api.football-data.org/v4"
+    
+    # COMPLETELY FREE APIS (No limits)
     TSDB_KEY          = _e("TheSportDB_API_key", "3")
     TSDB_URL          = "https://www.thesportsdb.com/api/v1/json"
     MSF_KEY           = _e("MYSPORTSFEEDS_KEY")
     MSF_PASS          = _e("MYSPORTSFEEDS_PASSWORD")
     MSF_URL           = "https://api.mysportsfeeds.com/v2.1/pull"
 
-    TTL_LIVE     = 30
-    TTL_UPCOMING = 600
-    TTL_LEAGUES  = 86400
+    # Cache TTLs - INCREASED to reduce API calls
+    TTL_LIVE     = 60      # Cache live matches for 60 seconds (was 30)
+    TTL_UPCOMING = 900     # Cache upcoming for 15 minutes (was 600)
+    TTL_LEAGUES  = 86400   # Cache leagues for 24 hours
     TIMEOUT      = 12
     RETRIES      = 2
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STATIC LEAGUE LISTS
+# STATIC LEAGUE LISTS (ZERO API calls - always available)
 # ═══════════════════════════════════════════════════════════════════════════════
 STATIC_LEAGUES: Dict[str, List[Dict]] = {
     "Soccer": [
-        {"id": "39",  "name": "Premier League",            "country": "England"},
-        {"id": "40",  "name": "Championship",              "country": "England"},
-        {"id": "140", "name": "La Liga",                   "country": "Spain"},
-        {"id": "135", "name": "Serie A",                   "country": "Italy"},
-        {"id": "78",  "name": "Bundesliga",                "country": "Germany"},
-        {"id": "61",  "name": "Ligue 1",                   "country": "France"},
-        {"id": "88",  "name": "Eredivisie",                "country": "Netherlands"},
-        {"id": "2",   "name": "UEFA Champions League",     "country": "Europe"},
-        {"id": "3",   "name": "UEFA Europa League",        "country": "Europe"},
-        {"id": "1",   "name": "FIFA World Cup",            "country": "World"},
-        {"id": "10",  "name": "Friendlies International",  "country": "World"},
-        {"id": "14",  "name": "World Club Friendlies",     "country": "World"},
+        {"id": "39",  "name": "Premier League",                "country": "England"},
+        {"id": "40",  "name": "Championship",                  "country": "England"},
+        {"id": "140", "name": "La Liga",                       "country": "Spain"},
+        {"id": "135", "name": "Serie A",                       "country": "Italy"},
+        {"id": "78",  "name": "Bundesliga",                    "country": "Germany"},
+        {"id": "61",  "name": "Ligue 1",                       "country": "France"},
+        {"id": "88",  "name": "Eredivisie",                    "country": "Netherlands"},
+        {"id": "2",   "name": "UEFA Champions League",         "country": "Europe"},
+        {"id": "3",   "name": "UEFA Europa League",            "country": "Europe"},
+        {"id": "1",   "name": "FIFA World Cup",                "country": "World"},
+        {"id": "10",  "name": "Friendlies International",      "country": "World"},
+        {"id": "14",  "name": "World Club Friendlies",         "country": "World"},
+        {"id": "12",  "name": "Friendly International Women",  "country": "World"},
+        {"id": "253", "name": "MLS",                           "country": "USA"},
+        {"id": "71",  "name": "Brasileirao Serie A",           "country": "Brazil"},
+        {"id": "283", "name": "Saudi Pro League",              "country": "Saudi Arabia"},
+        {"id": "98",  "name": "J-League",                      "country": "Japan"},
+        {"id": "17",  "name": "AFC Champions League",          "country": "Asia"},
+        {"id": "29",  "name": "CAF Champions League",          "country": "Africa"},
+        {"id": "233", "name": "NPFL",                          "country": "Nigeria"},
+        {"id": "11",  "name": "Copa Libertadores",             "country": "S. America"},
+        {"id": "9",   "name": "Copa America",                  "country": "S. America"},
+        {"id": "7",   "name": "FIFA Women's World Cup",        "country": "World"},
+        {"id": "573", "name": "Women's Super League",          "country": "England"},
+        {"id": "582", "name": "NWSL",                          "country": "USA"},
     ],
     "NBA": [{"id": "NBA", "name": "NBA", "country": "USA"}],
     "NFL": [{"id": "NFL", "name": "NFL", "country": "USA"}],
@@ -99,11 +118,14 @@ class Match:
 
     def to_dataframe_row(self) -> Dict:
         su = self.status.upper()
-        is_live = any(x in su for x in ["LIVE","1H","2H","HT","IN_PLAY","IN_PROGRESS"])
-        is_done = any(x in su for x in ["FINISH","FT","FINAL","COMPLET","ENDED"])
-        if is_live:   disp = "🔴 LIVE"
-        elif is_done: disp = "✅ FINISHED"
-        else:         disp = "⏳ UPCOMING"
+        is_live = any(x in su for x in ["LIVE", "1H", "2H", "HT", "IN_PLAY", "IN_PROGRESS"])
+        is_done = any(x in su for x in ["FINISH", "FT", "FINAL", "COMPLET", "ENDED"])
+        if is_live:
+            disp = "🔴 LIVE"
+        elif is_done:
+            disp = "✅ FINISHED"
+        else:
+            disp = "⏳ UPCOMING"
         t = ""
         if self.start_time:
             try:
@@ -160,7 +182,7 @@ class DataProvider:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# API-SPORTS PROVIDER - WORKING WITH NEW KEY
+# API-SPORTS PROVIDER - WITH REQUEST TRACKING
 # ═══════════════════════════════════════════════════════════════════════════════
 class APISportsProvider(DataProvider):
     def __init__(self):
@@ -168,21 +190,52 @@ class APISportsProvider(DataProvider):
         self.api_key = APIConfig.API_SPORTS_KEY
         self.headers = {"x-apisports-key": self.api_key} if self.api_key else {}
         self.request_count = 0
+        self.request_log: List[Dict] = []
         self.last_reset = datetime.now()
+        self.rate_limit_exhausted = False
 
     @property
     def ok(self):
-        return bool(self.api_key)
+        return bool(self.api_key) and not self.rate_limit_exhausted
 
-    def _check_limit(self):
+    def _check_rate_limit(self):
+        """Track rate limit and warn when approaching"""
         now = datetime.now()
         if now.day != self.last_reset.day:
             self.request_count = 0
+            self.rate_limit_exhausted = False
             self.last_reset = now
-        return self.request_count < 100
+            logger.info("[API-SPORTS] Rate limit reset for new day")
+        
+        if self.request_count >= 95:
+            logger.warning(f"[API-SPORTS] High usage: {self.request_count}/100 requests used")
+        
+        if self.request_count >= 100:
+            self.rate_limit_exhausted = True
+            logger.error("[API-SPORTS] Daily rate limit exhausted! Using fallback.")
+            return False
+        return True
+
+    def _log_request(self, endpoint: str):
+        """Log each request for debugging"""
+        self.request_count += 1
+        self.request_log.append({
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "endpoint": endpoint,
+            "count": self.request_count,
+            "remaining": 100 - self.request_count
+        })
+        logger.info(f"[API-SPORTS] Request #{self.request_count}: {endpoint} (remaining: {100 - self.request_count})")
+
+    def get_remaining_requests(self) -> int:
+        """Get remaining requests for today"""
+        now = datetime.now()
+        if now.day != self.last_reset.day:
+            return 100
+        return max(0, 100 - self.request_count)
 
     def get_live_matches(self) -> List[Match]:
-        if not self.ok or not self._check_limit():
+        if not self._check_rate_limit():
             return []
         
         cache_key = self._ck("live")
@@ -190,8 +243,9 @@ class APISportsProvider(DataProvider):
         if cached is not None:
             return cached
         
+        self._log_request("fixtures?live=all")
+        
         response = self._req(f"{APIConfig.API_SPORTS_URL}/fixtures", self.headers, {"live": "all"})
-        self.request_count += 1
         
         if not response:
             return []
@@ -205,8 +259,9 @@ class APISportsProvider(DataProvider):
         self._set(cache_key, matches)
         return matches
 
-    def get_upcoming_matches(self, days: int = 7) -> List[Match]:
-        if not self.ok or not self._check_limit():
+    def get_upcoming_matches(self, days: int = 3) -> List[Match]:
+        """Get upcoming matches - reduced to 3 days to save requests"""
+        if not self._check_rate_limit():
             return []
         
         cache_key = self._ck("upcoming", days)
@@ -217,12 +272,13 @@ class APISportsProvider(DataProvider):
         today = datetime.now().strftime("%Y-%m-%d")
         future = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
         
+        self._log_request(f"fixtures?from={today}&to={future}")
+        
         response = self._req(
             f"{APIConfig.API_SPORTS_URL}/fixtures",
             self.headers,
             {"from": today, "to": future}
         )
-        self.request_count += 1
         
         if not response:
             return []
@@ -279,18 +335,31 @@ class APISportsProvider(DataProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FOOTBALL-DATA PROVIDER (BACKUP)
+# FOOTBALL-DATA PROVIDER (BACKUP - No daily limit)
 # ═══════════════════════════════════════════════════════════════════════════════
 class FootballDataProvider(DataProvider):
     def __init__(self):
         super().__init__("Football-Data")
         self.headers = {"X-Auth-Token": APIConfig.FOOTBALL_DATA_KEY} if APIConfig.FOOTBALL_DATA_KEY else {}
+        self.request_timestamps = []
 
     @property
     def ok(self):
         return True
 
+    def _check_rate_limit(self):
+        """Track 10 requests per minute"""
+        now = time.time()
+        self.request_timestamps = [ts for ts in self.request_timestamps if now - ts < 60]
+        if len(self.request_timestamps) >= 10:
+            return False
+        self.request_timestamps.append(now)
+        return True
+
     def get_today_matches(self) -> List[Match]:
+        if not self._check_rate_limit():
+            return []
+        
         today = datetime.now().strftime("%Y-%m-%d")
         cache_key = self._ck("today", today)
         cached = self._get(cache_key, APIConfig.TTL_LIVE)
@@ -362,13 +431,22 @@ class EmpireDataRouter:
         })
 
     def _log_startup(self):
-        self._log("API-SPORTS", "READY" if self.api_sports.ok else "NO KEY", "100 requests/day")
-        self._log("Football-Data", "READY", "Backup provider")
+        remaining = self.api_sports.get_remaining_requests()
+        self._log("API-SPORTS", "READY" if self.api_sports.ok else "RATE LIMITED", f"{remaining}/100 requests remaining today")
+        self._log("Football-Data", "READY", "Backup - No daily limit")
 
     def get_provider_status(self) -> List[Dict]:
+        remaining = self.api_sports.get_remaining_requests()
+        if self.api_sports.rate_limit_exhausted:
+            api_status = f"🔴 RATE LIMITED - 0/{remaining} remaining today"
+        elif remaining < 20:
+            api_status = f"🟡 LOW QUOTA - {remaining}/100 remaining today"
+        else:
+            api_status = f"🟢 ONLINE - {remaining}/100 remaining today"
+        
         return [
-            {"name": "API-SPORTS (Primary)", "status": "🟢 ONLINE" if self.api_sports.ok else "🔴 Add API_SPORTS_KEY"},
-            {"name": "Football-Data (Backup)", "status": "🟢 ONLINE"},
+            {"name": "API-SPORTS (Primary)", "status": api_status},
+            {"name": "Football-Data (Backup)", "status": "🟢 ONLINE - No daily limit"},
         ]
 
     def get_connection_log_df(self) -> pd.DataFrame:
@@ -380,27 +458,44 @@ class EmpireDataRouter:
     def get_live_matches(self, sport: str, league_id: str = None) -> pd.DataFrame:
         matches = []
         if sport == "Soccer":
-            matches = self.api_sports.get_live_matches()
-            if matches:
-                self._log("API-SPORTS", "SUCCESS", f"{len(matches)} live soccer matches")
+            # Try API-SPORTS first if not rate limited
+            if not self.api_sports.rate_limit_exhausted:
+                matches = self.api_sports.get_live_matches()
+                if matches:
+                    self._log("API-SPORTS", "SUCCESS", f"{len(matches)} live soccer matches")
+                else:
+                    self._log("API-SPORTS", "NO LIVE", "No live matches currently")
             else:
-                self._log("API-SPORTS", "NO LIVE", "No live matches currently")
+                self._log("API-SPORTS", "SKIPPED", "Rate limit exhausted - using backup")
+            
+            # Fallback to Football-Data if needed
+            if not matches:
+                fd_matches = self.football_data.get_today_matches()
+                matches = [m for m in fd_matches if m.status == "LIVE"]
+                if matches:
+                    self._log("Football-Data", "SUCCESS", f"{len(matches)} live soccer matches")
+        
         return pd.DataFrame([m.to_dataframe_row() for m in matches]) if matches else pd.DataFrame()
 
     def get_upcoming_matches(self, sport: str) -> pd.DataFrame:
         matches = []
         if sport == "Soccer":
-            matches = self.api_sports.get_upcoming_matches(days=7)
+            # Try Football-Data first (no daily limit, more reliable for upcoming)
+            fd_matches = self.football_data.get_today_matches()
+            matches = [m for m in fd_matches if m.status == "SCHEDULED"]
             if matches:
-                self._log("API-SPORTS", "SUCCESS", f"{len(matches)} upcoming soccer matches")
+                self._log("Football-Data", "SUCCESS", f"{len(matches)} upcoming soccer matches")
             else:
-                # Try backup
-                fd_matches = self.football_data.get_today_matches()
-                matches = [m for m in fd_matches if m.status == "SCHEDULED"]
+                self._log("Football-Data", "EMPTY", "No upcoming matches found")
+            
+            # Only use API-SPORTS if we have requests remaining and Football-Data found nothing
+            if not matches and not self.api_sports.rate_limit_exhausted and self.api_sports.get_remaining_requests() > 10:
+                matches = self.api_sports.get_upcoming_matches(days=3)
                 if matches:
-                    self._log("Football-Data", "SUCCESS", f"{len(matches)} upcoming soccer matches")
+                    self._log("API-SPORTS", "SUCCESS", f"{len(matches)} upcoming soccer matches")
                 else:
-                    self._log("API-SPORTS", "EMPTY", "No matches found")
+                    self._log("API-SPORTS", "EMPTY", "No upcoming matches found")
+        
         return pd.DataFrame([m.to_dataframe_row() for m in matches]) if matches else pd.DataFrame()
 
 
@@ -413,7 +508,7 @@ class EmpireDashboardData:
 
     @property
     def is_live(self):
-        return bool(APIConfig.API_SPORTS_KEY)
+        return True
 
     def get_connection_log_df(self):
         return self.router.get_connection_log_df()
