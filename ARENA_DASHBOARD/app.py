@@ -267,7 +267,7 @@ st.markdown("""
 # SPORT CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 SPORT_OPTIONS = {
-    "Soccer":       {"icon": "⚽",  "provider": "API-SPORTS (Free - 100/day)"},
+    "Football":     {"icon": "⚽",  "provider": "API-SPORTS (Free - 100/day)"},
     "NBA":          {"icon": "🏀",  "provider": "MySportsFeeds (Free)"},
     "NFL":          {"icon": "🏈",  "provider": "MySportsFeeds (Free)"},
     "MLB":          {"icon": "⚾",  "provider": "MySportsFeeds (Free)"},
@@ -555,7 +555,7 @@ def render_ticker():
     st.markdown(
         '<div class="ticker"><div class="ticker-text">'
         '🧠 CLAUDE AI ACTIVE — GENERATING PREDICTIONS IN REAL TIME &nbsp;·&nbsp; '
-        '⚽ Soccer (API-SPORTS Free) &nbsp;·&nbsp; 🏀 NBA (MySportsFeeds Free) &nbsp;·&nbsp; '
+        '⚽ Football (API-SPORTS Free) &nbsp;·&nbsp; 🏀 NBA (MySportsFeeds Free) &nbsp;·&nbsp; '
         '🏈 NFL &nbsp;·&nbsp; ⚾ MLB &nbsp;·&nbsp; 🏒 NHL &nbsp;·&nbsp; 🥊 UFC (TheSportsDB Free) &nbsp;·&nbsp; '
         '🏎️ F1 &nbsp;·&nbsp; 🎾 Tennis &nbsp;·&nbsp; 🏏 Cricket &nbsp;·&nbsp; ⛳ Golf'
         '</div></div>',
@@ -727,7 +727,7 @@ def render_prediction_card(pred: MatchPrediction):
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
-        if sport == "Soccer":
+        if sport == "Football":
             # Check if we have remaining requests
             remaining = 0
             if hasattr(data.router, 'api_sports'):
@@ -924,7 +924,7 @@ def render_arena(sport: str, league_id: str, status: str):
     )
 
     # Show which free API is being used with rate limit info
-    if sport == "Soccer":
+    if sport == "Football":
         remaining = 0
         if hasattr(data.router, 'api_sports'):
             remaining = data.router.api_sports.get_remaining_requests()
