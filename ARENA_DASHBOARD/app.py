@@ -183,7 +183,7 @@ st.html("""
 # SPORT CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 SPORT_OPTIONS = {
-    "Soccer":    {"icon": "⚽",  "provider": "API-SPORTS"},
+    "Football":    {"icon": "⚽",  "provider": "API-SPORTS"},
     "NBA":       {"icon": "🏀",  "provider": "MySportsFeeds"},
     "NFL":       {"icon": "🏈",  "provider": "MySportsFeeds"},
     "MLB":       {"icon": "⚾",  "provider": "MySportsFeeds"},
@@ -443,16 +443,28 @@ def render_sidebar() -> tuple:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CACHE CLEAR HELPER
+# CACHE CLEAR HELPER - FIXED VERSION
 # ══════════════════════════════════════════════════════════════════════════════
 def _clear_all_caches():
+    """Clear all caches safely - handles both Streamlit and provider caches"""
     st.session_state.last_refresh = time.time()
-    for provider in [
-        data.router.api_sports,
-        data.router.my_sports_feeds,
-        data.router.the_sports_db,
-    ]:
-        provider.cache.clear()
+    
+    # Clear Streamlit's data cache
+    st.cache_data.clear()
+    
+    # Safely clear provider caches if they exist - using correct attribute names
+    router = data.router
+    
+    # Use the correct attribute names from your EmpireDataRouter
+    provider_attrs = ["api_sports", "football_data", "msf", "tsdb", "apify"]
+    
+    for attr in provider_attrs:
+        provider = getattr(router, attr, None)
+        if provider is not None and hasattr(provider, "clear"):
+            try:
+                provider.clear()
+            except Exception:
+                pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -462,7 +474,7 @@ def render_ticker():
     st.markdown(
         '<div class="ticker"><div class="ticker-text">'
         '📡 LIVE DATA FEED ACTIVE — '
-        '⚽ Soccer &nbsp;·&nbsp; 🏀 NBA &nbsp;·&nbsp; 🏈 NFL &nbsp;·&nbsp; '
+        '⚽ Football &nbsp;·&nbsp; 🏀 NBA &nbsp;·&nbsp; 🏈 NFL &nbsp;·&nbsp; '
         '⚾ MLB &nbsp;·&nbsp; 🏒 NHL &nbsp;·&nbsp; 🥊 UFC &nbsp;·&nbsp; '
         '🏎️ F1 &nbsp;·&nbsp; 🎾 Tennis &nbsp;·&nbsp; 🏏 Cricket &nbsp;·&nbsp; ⛳ Golf'
         '</div></div>',
@@ -511,28 +523,22 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
         color, bg, label = _status_style(status_raw)
 
         st.markdown(f"""
-        <div style="background:linear-gradient(135deg,rgba(20,25,40,.9),rgba(10,15,30,.95));
-             border:1px solid rgba(255,255,255,.08);border-radius:12px;
-             padding:16px;margin:8px 0;">
+        <div class="match-card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                <span style="color:#8892b0;font-size:.75rem;font-family:Rajdhani;">{league}</span>
+                <span style="color:#8892b0;font-size:.75rem;">{league}</span>
                 <span style="color:{color};background:{bg};padding:2px 10px;
-                      border-radius:10px;font-size:.7rem;font-weight:700;
-                      font-family:Orbitron;">{label}</span>
+                      border-radius:10px;font-size:.7rem;font-weight:700;">{label}</span>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="flex:1;text-align:left;">
-                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;
-                          font-family:Rajdhani;">{home}</div>
+                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;">{home}</div>
                 </div>
                 <div style="padding:0 20px;text-align:center;">
-                    <div style="color:#00d4ff;font-size:1.4rem;font-weight:700;
-                          letter-spacing:2px;font-family:Orbitron;">{score}</div>
-                    <div style="color:#8892b0;font-size:.65rem;margin-top:2px;">{mtime}</div>
+                    <div style="color:#00d4ff;font-size:1.4rem;font-weight:700;">{score}</div>
+                    <div style="color:#8892b0;font-size:.65rem;">{mtime}</div>
                 </div>
                 <div style="flex:1;text-align:right;">
-                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;
-                          font-family:Rajdhani;">{away}</div>
+                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;">{away}</div>
                 </div>
             </div>
         </div>
