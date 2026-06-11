@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 import pandas as pd
 
 from empire_ai_engine import EmpireAIEngine
-from football_features import FootballFeatureEngineer
+# from football_features import FootballFeatureEngineer
 from nba_features import NBAFeatureEngineer
 from nfl_features import NFLFeatureEngineer
 from tennis_features import TennisFeatureEngineer
