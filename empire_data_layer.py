@@ -1,6 +1,6 @@
 """
 EMPIRE SPORT INSTINCTS ARENA — Data Layer (World-Class Multi-Sport v5.0)
-PRIMARY SOURCE: Apify/FlashScore (34+ Sports, using CORRECT actor input)
+PRIMARY SOURCE: Apify/FlashScore using extractify-labs/flashscore-extractor
 BACKUP SOURCES: API-SPORTS, Football-Data, MySportsFeeds, TheSportsDB
 ALL EXISTING LEAGUES PRESERVED - 500+ LEAGUES ACROSS ALL CONTINENTS
 """
@@ -168,14 +168,15 @@ class DataProvider:
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # APIFY / FLASHSCORE PROVIDER (PRIMARY - CORRECTED ACTOR INTEGRATION)
+# Using extractify-labs/flashscore-extractor Actor
 # ═══════════════════════════════════════════════════════════════════════════════
 class ApifyProvider(DataProvider):
     """
     FlashScore via Apify - PRIMARY source for all sports
-    CORRECTED: Uses 'sport' parameter (not startUrls) as per actor documentation
+    CORRECTED: Using extractify-labs/flashscore-extractor Actor
     """
     
-    # Map your sport names to what the FlashScore scraper actor expects
+    # Map your sport names to what the FlashScore extractor Actor expects
     SPORT_MAP = {
         "Football":     "football",
         "Soccer":       "football",
@@ -214,20 +215,29 @@ class ApifyProvider(DataProvider):
         "Water Polo":   "water-polo",
     }
 
+    # Actor ID for the FlashScore extractor (found working via research)
+    ACTOR_ID = "extractify-labs~flashscore-extractor"
+
     def __init__(self):
         super().__init__("Apify/FlashScore")
         self.api_key = APIConfig.APIFY_API_KEY
-        self.actor_id = "crawlerbros~flashscore-scraper"
         self._cache: Dict[str, Any] = {}
 
     @property
     def ok(self):
         return bool(self.api_key)
 
-    def _call_actor(self, sport: str, live_only: bool = False, timeout: int = 60) -> Optional[List]:
+    def _call_actor(self, sport: str, days: int = 7, timeout: int = 90) -> Optional[List]:
         """
-        Run Apify actor with CORRECT input format using 'sport' parameter.
-        Based on official FlashScore Scraper documentation.
+        Run Apify Actor with CORRECT input format for extractify-labs/flashscore-extractor.
+        
+        The Actor expects input like:
+        {
+            "mode": "score_mode",
+            "sports": ["football"],
+            "dayOffsets": ["0", "1", "2", "3", "4", "5", "6"],
+            "matchStatus": ["finished", "notstarted", "inprogress"]
+        }
         """
         if not self.api_key:
             logger.warning("Apify: No API key")
@@ -236,22 +246,26 @@ class ApifyProvider(DataProvider):
         # Get the correct sport name for the actor
         actor_sport = self.SPORT_MAP.get(sport, "football")
         
-        # CORRECT payload format for FlashScore scraper actor
+        # Build day offsets for the requested number of days
+        day_offsets = [str(i) for i in range(days)]
+        
+        # CORRECT payload format for extractify-labs/flashscore-extractor Actor
         payload = {
-            "sport": actor_sport,      # ← KEY: Use 'sport' parameter, not startUrls
-            "liveOnly": live_only,
-            "maxItems": 500
+            "mode": "score_mode",
+            "sports": [actor_sport],
+            "dayOffsets": day_offsets,
+            "matchStatus": ["finished", "notstarted", "inprogress"]
         }
         
-        logger.info(f"Apify: Calling actor for sport '{actor_sport}' (mapped from '{sport}')")
+        logger.info(f"Apify: Calling Actor for sport '{actor_sport}' (mapped from '{sport}') with {days} days")
         
-        # Use the synchronous endpoint that returns data directly
-        url = f"https://api.apify.com/v2/acts/{self.actor_id}/run-sync-get-dataset-items"
+        # Use the run-sync endpoint for simplicity
+        url = f"https://api.apify.com/v2/acts/{self.ACTOR_ID}/run-sync-get-dataset-items"
         
         try:
             response = requests.post(
                 url,
-                params={"token": self.api_key, "timeout": timeout, "memory": 256},
+                params={"token": self.api_key, "timeout": timeout, "memory": 512},
                 json=payload,
                 timeout=timeout + 10
             )
@@ -265,7 +279,7 @@ class ApifyProvider(DataProvider):
                     logger.info(f"Apify: Retrieved {len(items['items'])} items for {sport}")
                     return items["items"]
                 else:
-                    logger.warning(f"Apify: Unexpected response format for {sport}")
+                    logger.warning(f"Apify: Unexpected response format for {sport}: {type(items)}")
                     return None
             else:
                 logger.error(f"Apify: HTTP {response.status_code} - {response.text[:200]}")
@@ -288,14 +302,14 @@ class ApifyProvider(DataProvider):
     def _set(self, key: str, val: Any):
         self._cache[key] = {"v": val, "t": time.time()}
 
-    def get_matches_by_sport(self, sport: str, live_only: bool = False) -> List[Match]:
+    def get_matches_by_sport(self, sport: str, days: int = 7) -> List[Match]:
         """Fetch matches for a sport using the CORRECT actor input format"""
-        cache_key = self._ck("sport", sport, str(live_only))
+        cache_key = self._ck("sport", sport, str(days))
         cached = self._get(cache_key, APIConfig.TTL_UPCOMING)
         if cached is not None:
             return cached
         
-        items = self._call_actor(sport, live_only, 60)
+        items = self._call_actor(sport, days, 90)
         if not items:
             return []
         
@@ -304,8 +318,14 @@ class ApifyProvider(DataProvider):
         return matches
 
     def get_live_matches(self, sport: str) -> List[Match]:
-        """Fetch live matches only"""
-        return self.get_matches_by_sport(sport, live_only=True)
+        """Fetch live matches only (1 day, filter to live)"""
+        matches = self.get_matches_by_sport(sport, days=1)
+        return [m for m in matches if m.status == "LIVE"]
+
+    def get_upcoming_matches(self, sport: str, days: int = 7) -> List[Match]:
+        """Fetch upcoming matches only"""
+        matches = self.get_matches_by_sport(sport, days=days)
+        return [m for m in matches if m.status == "SCHEDULED"]
 
     def _parse_items(self, items: List, sport: str) -> List[Match]:
         """Parse Apify output into Match objects"""
@@ -317,9 +337,11 @@ class ApifyProvider(DataProvider):
             
             # Extract team names - handle various field names from FlashScore
             home = (item.get('homeTeam') or item.get('home') or 
-                   item.get('team1') or item.get('homeName') or '')
+                   item.get('team1') or item.get('homeName') or 
+                   item.get('participants', [{}])[0].get('name') if item.get('participants') else '')
             away = (item.get('awayTeam') or item.get('away') or 
-                   item.get('team2') or item.get('awayName') or '')
+                   item.get('team2') or item.get('awayName') or 
+                   item.get('participants', [{}])[1].get('name') if len(item.get('participants', [])) > 1 else '')
             
             if isinstance(home, dict):
                 home = home.get('name', home.get('shortName', 'TBD'))
@@ -345,7 +367,7 @@ class ApifyProvider(DataProvider):
             status_raw = str(item.get('status') or item.get('matchStatus') or 
                             item.get('statusText') or 'SCHEDULED').lower()
             
-            is_live = any(x in status_raw for x in ['live', 'in progress', '1st', '2nd', 'half', 'period', 'quarter', 'ongoing'])
+            is_live = any(x in status_raw for x in ['live', 'in progress', '1st', '2nd', 'half', 'period', 'quarter', 'ongoing', 'inplay'])
             is_finished = any(x in status_raw for x in ['finished', 'ft', 'final', 'ended', 'complete'])
             
             if is_live:
@@ -362,8 +384,8 @@ class ApifyProvider(DataProvider):
             if 'score' in item:
                 score = item['score']
                 if isinstance(score, dict):
-                    home_score = score.get('home') or score.get('homeTeam')
-                    away_score = score.get('away') or score.get('awayTeam')
+                    home_score = score.get('home') or score.get('homeTeam') or score.get('homeScore')
+                    away_score = score.get('away') or score.get('awayTeam') or score.get('awayScore')
                 elif isinstance(score, str) and ':' in score:
                     parts = score.split(':')
                     if len(parts) == 2:
@@ -377,7 +399,7 @@ class ApifyProvider(DataProvider):
             
             # Parse start time
             start_time = None
-            time_fields = ['startTime', 'startTimestamp', 'date', 'kickoff', 'time', 'startDate']
+            time_fields = ['startTime', 'startTimestamp', 'date', 'kickoff', 'time', 'startDate', 'scheduled']
             for field in time_fields:
                 raw_time = item.get(field)
                 if raw_time:
@@ -707,13 +729,10 @@ class TheSportsDBProvider(DataProvider):
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMPREHENSIVE STATIC LEAGUE LISTS - COMPLETE (500+ LEAGUES - ALL PRESERVED)
 # ═══════════════════════════════════════════════════════════════════════════════
-# NOTE: This is YOUR COMPLETE LEAGUE LIST - NOTHING REMOVED, NOTHING OMITTED
-# All 500+ leagues across all continents are preserved exactly as you provided
-
 STATIC_LEAGUES: Dict[str, List[Dict]] = {
     # ═══════════════════════════════════════════════════════════════════════════
     # FOOTBALL / SOCCER - COMPLETE GLOBAL COVERAGE (250+ Leagues)
-    # Including FULL AFRICAN COVERAGE - ALL PRESERVED
+    # Including FULL AFRICAN COVERAGE
     # ═══════════════════════════════════════════════════════════════════════════
     "Football": [
         # ==================== UEFA (EUROPE) - 50+ Leagues ====================
@@ -978,7 +997,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # NBA & BASKETBALL - Comprehensive Coverage (ALL PRESERVED)
+    # NBA & BASKETBALL - Comprehensive Coverage
     # ═══════════════════════════════════════════════════════════════════════════
     "NBA": [
         {"id": "NBA",        "name": "NBA",                     "country": "USA/Canada"},
@@ -1009,7 +1028,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # NFL & AMERICAN FOOTBALL (ALL PRESERVED)
+    # NFL & AMERICAN FOOTBALL
     # ═══════════════════════════════════════════════════════════════════════════
     "NFL": [
         {"id": "NFL",        "name": "NFL",                     "country": "USA"},
@@ -1029,7 +1048,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # MLB & BASEBALL (ALL PRESERVED)
+    # MLB & BASEBALL
     # ═══════════════════════════════════════════════════════════════════════════
     "MLB": [
         {"id": "MLB",        "name": "MLB",                     "country": "USA/Canada"},
@@ -1051,7 +1070,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # NHL & HOCKEY (ALL PRESERVED)
+    # NHL & HOCKEY
     # ═══════════════════════════════════════════════════════════════════════════
     "NHL": [
         {"id": "NHL",        "name": "NHL",                     "country": "USA/Canada"},
@@ -1078,7 +1097,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # UFC / MMA - Complete Weight Classes (ALL PRESERVED)
+    # UFC / MMA - Complete Weight Classes
     # ═══════════════════════════════════════════════════════════════════════════
     "UFC": [
         {"id": "UFC_ALL",    "name": "UFC — All Events",        "country": "World"},
@@ -1114,7 +1133,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # FORMULA 1 & MOTORSPORT - Complete Calendar (ALL PRESERVED)
+    # FORMULA 1 & MOTORSPORT - Complete Calendar
     # ═══════════════════════════════════════════════════════════════════════════
     "Formula 1": [
         {"id": "F1_ALL",     "name": "F1 — Full Season",        "country": "World"},
@@ -1160,7 +1179,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # TENNIS - Complete ATP, WTA & Grand Slams (ALL PRESERVED)
+    # TENNIS - Complete ATP, WTA & Grand Slams
     # ═══════════════════════════════════════════════════════════════════════════
     "Tennis": [
         {"id": "AUS_OPEN",   "name": "Australian Open",         "country": "Australia"},
@@ -1193,7 +1212,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # CRICKET - Complete Global Coverage (ALL PRESERVED)
+    # CRICKET - Complete Global Coverage
     # ═══════════════════════════════════════════════════════════════════════════
     "Cricket": [
         {"id": "TEST",       "name": "Test Matches",            "country": "World"},
@@ -1222,7 +1241,7 @@ STATIC_LEAGUES: Dict[str, List[Dict]] = {
     ],
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # GOLF - Complete PGA, DP World, LIV & Majors (ALL PRESERVED)
+    # GOLF - Complete PGA, DP World, LIV & Majors
     # ═══════════════════════════════════════════════════════════════════════════
     "Golf": [
         {"id": "PGA_ALL",    "name": "PGA Tour — All Events",   "country": "USA"},
@@ -1278,7 +1297,7 @@ class EmpireDataRouter:
 
     def _log_startup(self):
         remaining = self.api_sports.get_remaining() if self.api_sports.ok else 0
-        self._log("Apify/FlashScore (PRIMARY)", "READY" if self.apify.ok else "NO KEY", "34+ Sports - CORRECT actor input")
+        self._log("Apify/FlashScore (PRIMARY)", "READY" if self.apify.ok else "NO KEY", "extractify-labs/flashscore-extractor")
         self._log("API-SPORTS (BACKUP)", "READY" if self.api_sports.ok else "NO KEY", f"{remaining}/100 daily")
         self._log("Football-Data (BACKUP)", "READY", "10 req/min")
         self._log("MySportsFeeds (BACKUP)", "READY" if self.msf.ok else "NO KEY", "NBA/NFL/MLB/NHL")
@@ -1302,15 +1321,15 @@ class EmpireDataRouter:
         return STATIC_LEAGUES.get(sport, [{"id": "ALL", "name": "All Events", "country": "World"}])
 
     def get_upcoming_matches(self, sport: str, league_id: str = None) -> pd.DataFrame:
-        """Get matches - PRIMARY: Apify/FlashScore for ALL sports"""
+        """Get matches - PRIMARY: Apify/FlashScore with CORRECT actor"""
         matches = []
         
-        # PRIMARY: Use Apify/FlashScore with CORRECT actor input
+        # PRIMARY: Use Apify/FlashScore with CORRECT actor configuration
         if self.apify.ok:
             try:
-                # Map sport name for Apify
-                if sport in ["Football", "NBA", "NFL", "MLB", "NHL", "UFC", "Formula 1", "Tennis", "Cricket", "Golf"]:
-                    matches = self.apify.get_matches_by_sport(sport)
+                # Map sport name for Apify - get 7 days of matches
+                if sport in self.apify.SPORT_MAP:
+                    matches = self.apify.get_matches_by_sport(sport, days=7)
                     if matches:
                         self._log("Apify/FlashScore", "SUCCESS", f"{len(matches)} {sport} matches")
                     else:
@@ -1355,7 +1374,7 @@ class EmpireDataRouter:
         """Get live matches"""
         matches = []
         
-        # Use Apify for live matches with CORRECT input
+        # Use Apify for live matches with CORRECT actor
         if self.apify.ok:
             try:
                 matches = self.apify.get_live_matches(sport)
