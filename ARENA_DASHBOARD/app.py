@@ -99,7 +99,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SPORT CONFIG - COMPREHENSIVE GLOBAL COVERAGE
+# SPORT CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 SPORT_OPTIONS = {
     "Football":     {"icon": "⚽",  "provider": "API-SPORTS + Football-Data"},
@@ -292,7 +292,7 @@ def render_sidebar() -> tuple:
 
         st.markdown("<hr style='border-color:#333;margin:6px 0;'>", unsafe_allow_html=True)
 
-        # League selector - Shows ALL leagues from the comprehensive list
+        # League selector
         raw_leagues   = data.get_all_leagues(st.session_state.selected_sport)
         league_ids    = ["ALL"]
         league_labels = [f"🏆 All {st.session_state.selected_sport} — All Events"]
@@ -435,6 +435,30 @@ def _fetch_matches(sport: str, league_id: str, status: str) -> pd.DataFrame:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# DEBUG FUNCTION
+# ══════════════════════════════════════════════════════════════════════════════
+def debug_match_data(df: pd.DataFrame, selected_league_id: str, selected_league_name: str = None):
+    """Debug function to show what data we have"""
+    st.markdown("### 🔍 DEBUG INFO (Remove after fixing)")
+    st.markdown(f"**Selected League ID:** {selected_league_id}")
+    st.markdown(f"**Selected League Name:** {selected_league_name}")
+    st.markdown(f"**DataFrame shape:** {df.shape}")
+    st.markdown(f"**DataFrame columns:** {list(df.columns)}")
+    
+    if not df.empty:
+        st.markdown(f"**Unique leagues in data:**")
+        unique_leagues = df["LEAGUE"].unique()[:30]
+        for league in sorted(unique_leagues):
+            count = len(df[df["LEAGUE"] == league])
+            st.markdown(f"- {league} ({count} matches)")
+        
+        st.markdown("**First 5 rows of data:**")
+        st.dataframe(df[["LEAGUE", "HOME_TEAM", "AWAY_TEAM", "TIME", "STATUS"]].head(5))
+    else:
+        st.warning("DataFrame is empty!")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PREDICTION CARD RENDERER
 # ══════════════════════════════════════════════════════════════════════════════
 def render_prediction_card(pred: MatchPrediction):
@@ -526,7 +550,7 @@ def render_prediction_card(pred: MatchPrediction):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH CARDS - FIXED VERSION (Proper HTML Rendering)
+# MATCH CARDS - FIXED HTML RENDERING
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
@@ -540,55 +564,46 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
     )
 
     for idx, row in matches_df.iterrows():
-        home      = row.get("HOME_TEAM", "TBD")
-        away      = row.get("AWAY_TEAM", "TBD")
-        score     = row.get("SCORE",     "vs")
-        league    = row.get("LEAGUE",    "")
-        mtime     = row.get("TIME",      "")
-        match_id  = row.get("MATCH_ID",  str(idx))
-        status_raw = row.get("STATUS",   "UPCOMING")
+        home      = str(row.get("HOME_TEAM", "TBD"))
+        away      = str(row.get("AWAY_TEAM", "TBD"))
+        score     = str(row.get("SCORE", "vs"))
+        league    = str(row.get("LEAGUE", ""))
+        mtime     = str(row.get("TIME", ""))
+        match_id  = str(row.get("MATCH_ID", str(idx)))
+        status_raw = str(row.get("STATUS", "UPCOMING"))
         color, bg, label = _status_style(status_raw)
 
-        # Get AI prediction badge if available
-        cached_pred = ai.cache.get(match_id, sport) if hasattr(ai, 'cache') else None
-        ai_badge = ""
-        if cached_pred and hasattr(cached_pred, "confidence"):
-            c = cached_pred.confidence
-            cc = confidence_color(c) if 'confidence_color' in dir() else "#FFD700"
-            ai_badge = f'<span style="color:{cc};font-size:.65rem;border:1px solid {cc};border-radius:8px;padding:2px 8px;margin-left:8px;">🧠 {c}%</span>'
+        # Escape any special characters in strings
+        home = home.replace("'", "\\'").replace('"', '&quot;')
+        away = away.replace("'", "\\'").replace('"', '&quot;')
+        league = league.replace("'", "\\'").replace('"', '&quot;')
 
-        # Build the match card as a single properly formatted string
+        # Build the match card HTML as a single string
         card_html = f'''
-        <div style="background:linear-gradient(135deg,rgba(20,25,40,.9),rgba(10,15,30,.95));
-             border:1px solid rgba(255,255,255,.08);border-radius:12px;
-             padding:16px;margin:8px 0;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                <span style="color:#8892b0;font-size:.75rem;">{league}</span>
-                <div>
-                  <span style="color:{color};background:{bg};padding:2px 10px;
-                        border-radius:10px;font-size:.7rem;font-weight:700;">{label}</span>
-                  {ai_badge}
-                </div>
+        <div style="background:linear-gradient(135deg,rgba(20,25,40,.9),rgba(10,15,30,.95)); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:16px; margin:8px 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span style="color:#8892b0; font-size:.75rem;">{league}</span>
+                <span style="color:{color}; background:{bg}; padding:2px 10px; border-radius:10px; font-size:.7rem; font-weight:700;">{label}</span>
             </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="flex:1;text-align:left;">
-                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;">{home}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="flex:1; text-align:left;">
+                    <div style="color:#e6f1ff; font-size:1rem; font-weight:600;">{home}</div>
                 </div>
-                <div style="padding:0 20px;text-align:center;">
-                    <div style="color:#00d4ff;font-size:1.4rem;font-weight:700;">{score}</div>
-                    <div style="color:#8892b0;font-size:.65rem;">{mtime}</div>
+                <div style="padding:0 20px; text-align:center;">
+                    <div style="color:#00d4ff; font-size:1.4rem; font-weight:700;">{score}</div>
+                    <div style="color:#8892b0; font-size:.65rem;">{mtime}</div>
                 </div>
-                <div style="flex:1;text-align:right;">
-                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;">{away}</div>
+                <div style="flex:1; text-align:right;">
+                    <div style="color:#e6f1ff; font-size:1rem; font-weight:600;">{away}</div>
                 </div>
             </div>
         </div>
         '''
         
-        # Display the card with unsafe_allow_html=True
+        # Display the card
         st.markdown(card_html, unsafe_allow_html=True)
         
-        # Buttons row
+        # Buttons
         col1, col2 = st.columns([7, 1])
         with col1:
             if st.button(f"🧠 AI PREDICT", key=f"predict_{sport}_{match_id}_{idx}", use_container_width=True):
@@ -680,7 +695,7 @@ def render_match_detail():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ARENA - FIXED VERSION (Proper League Filtering)
+# ARENA - WITH DEBUG AND FIXED LEAGUE FILTERING
 # ══════════════════════════════════════════════════════════════════════════════
 def render_arena(sport: str, league_id: str, status: str):
     if "selected_match_id" in st.session_state:
@@ -705,31 +720,50 @@ def render_arena(sport: str, league_id: str, status: str):
     with st.spinner(spinner_msg):
         df = _fetch_matches(sport, league_id, status)
 
-    # FIXED: League filtering - match by LEAGUE name, not LEAGUE_ID
-    if league_id != "ALL" and not df.empty and "LEAGUE" in df.columns:
-        # Get the league name from the selected league_id
+    # Get the selected league name for display
+    selected_league_name = None
+    if league_id != "ALL":
         raw_leagues = data.get_all_leagues(sport)
-        league_name = None
         for lg in raw_leagues:
             if str(lg.get("id", "")) == str(league_id):
-                league_name = lg.get("name", "")
+                selected_league_name = lg.get("name", "")
                 break
-        
-        if league_name:
-            # Filter by league name (case-insensitive partial match)
-            mask = df["LEAGUE"].astype(str).str.contains(league_name, case=False, na=False)
-            filtered = df[mask]
-            if not filtered.empty:
-                df = filtered
-                st.success(f"✅ Showing matches for: {league_name}")
-            else:
-                st.warning(f"No matches found for {league_name}. Showing all matches.")
+
+    # FIXED: League filtering - match by LEAGUE name exactly
+    if league_id != "ALL" and selected_league_name and not df.empty and "LEAGUE" in df.columns:
+        # Filter by exact league name match (case-insensitive)
+        mask = df["LEAGUE"].astype(str).str.lower() == selected_league_name.lower()
+        filtered = df[mask]
+        if not filtered.empty:
+            df = filtered
+            st.success(f"✅ Showing {len(df)} matches for: {selected_league_name}")
         else:
-            # Fallback: try to match by ID directly
-            mask = df["LEAGUE_ID"].astype(str).str.contains(str(league_id), case=False, na=False)
-            filtered = df[mask]
-            if not filtered.empty:
-                df = filtered
+            # Try partial match if exact match fails
+            mask_partial = df["LEAGUE"].astype(str).str.contains(selected_league_name, case=False, na=False)
+            filtered_partial = df[mask_partial]
+            if not filtered_partial.empty:
+                df = filtered_partial
+                st.warning(f"⚠️ No exact match for '{selected_league_name}'. Showing {len(df)} partial matches.")
+            else:
+                st.warning(f"⚠️ No matches found for '{selected_league_name}'. Showing all {len(df)} matches.")
+                
+                # Show debug info to help diagnose
+                with st.expander("🔍 Debug: Available leagues in data"):
+                    unique_leagues = df["LEAGUE"].unique()
+                    for ul in sorted(unique_leagues)[:20]:
+                        st.write(f"- {ul}")
+
+    # Show debug info (temporarily - remove after fixing)
+    with st.expander("🔧 DEBUG INFO (Expand to see data)"):
+        st.markdown(f"**League ID:** {league_id}")
+        st.markdown(f"**League Name:** {selected_league_name}")
+        st.markdown(f"**DataFrame shape:** {df.shape}")
+        if not df.empty:
+            st.markdown(f"**Columns:** {list(df.columns)}")
+            st.markdown(f"**Unique leagues in data:**")
+            for ul in df["LEAGUE"].unique()[:20]:
+                st.markdown(f"- {ul}")
+            st.dataframe(df[["LEAGUE", "HOME_TEAM", "AWAY_TEAM", "TIME"]].head(10))
 
     render_match_cards(df, sport)
 
