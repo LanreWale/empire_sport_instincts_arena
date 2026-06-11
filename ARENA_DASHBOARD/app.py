@@ -428,12 +428,6 @@ def _fetch_matches(sport: str, league_id: str, status: str) -> pd.DataFrame:
             upcoming_df = _fetch_upcoming(upcoming_key, sport)
             parts = [d for d in [live_df, upcoming_df] if not d.empty]
             df    = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
-
-        if league_id != "ALL" and not df.empty and "LEAGUE_ID" in df.columns:
-            mask     = df["LEAGUE_ID"].astype(str).str.contains(league_id, case=False, na=False)
-            filtered = df[mask]
-            if not filtered.empty:
-                df = filtered
     except Exception as e:
         logger.error(f"_fetch_matches: {e}")
         df = pd.DataFrame()
@@ -532,7 +526,7 @@ def render_prediction_card(pred: MatchPrediction):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MATCH CARDS
+# MATCH CARDS - FIXED VERSION (Proper HTML Rendering)
 # ══════════════════════════════════════════════════════════════════════════════
 def render_match_cards(matches_df: pd.DataFrame, sport: str):
     if matches_df is None or matches_df.empty:
@@ -555,59 +549,59 @@ def render_match_cards(matches_df: pd.DataFrame, sport: str):
         status_raw = row.get("STATUS",   "UPCOMING")
         color, bg, label = _status_style(status_raw)
 
-        cached_pred = ai.cache.get(match_id, sport)
+        # Get AI prediction badge if available
+        cached_pred = ai.cache.get(match_id, sport) if hasattr(ai, 'cache') else None
         ai_badge = ""
         if cached_pred and hasattr(cached_pred, "confidence"):
             c = cached_pred.confidence
-            cc = confidence_color(c)
-            ai_badge = (
-                f'<span style="color:{cc};font-family:Orbitron;font-size:.65rem;'
-                f'border:1px solid {cc};border-radius:8px;padding:2px 8px;margin-left:8px;">'
-                f'🧠 {c}%</span>'
-            )
+            cc = confidence_color(c) if 'confidence_color' in dir() else "#FFD700"
+            ai_badge = f'<span style="color:{cc};font-size:.65rem;border:1px solid {cc};border-radius:8px;padding:2px 8px;margin-left:8px;">🧠 {c}%</span>'
 
-        st.markdown(f"""
+        # Build the match card as a single properly formatted string
+        card_html = f'''
         <div style="background:linear-gradient(135deg,rgba(20,25,40,.9),rgba(10,15,30,.95));
              border:1px solid rgba(255,255,255,.08);border-radius:12px;
              padding:16px;margin:8px 0;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                <span style="color:#8892b0;font-size:.75rem;font-family:Rajdhani;">{league}</span>
+                <span style="color:#8892b0;font-size:.75rem;">{league}</span>
                 <div>
                   <span style="color:{color};background:{bg};padding:2px 10px;
-                        border-radius:10px;font-size:.7rem;font-weight:700;
-                        font-family:Orbitron;">{label}</span>
+                        border-radius:10px;font-size:.7rem;font-weight:700;">{label}</span>
                   {ai_badge}
                 </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="flex:1;text-align:left;">
-                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;font-family:Rajdhani;">{home}</div>
+                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;">{home}</div>
                 </div>
                 <div style="padding:0 20px;text-align:center;">
-                    <div style="color:#00d4ff;font-size:1.4rem;font-weight:700;letter-spacing:2px;font-family:Orbitron;">{score}</div>
-                    <div style="color:#8892b0;font-size:.65rem;margin-top:2px;">{mtime}</div>
+                    <div style="color:#00d4ff;font-size:1.4rem;font-weight:700;">{score}</div>
+                    <div style="color:#8892b0;font-size:.65rem;">{mtime}</div>
                 </div>
                 <div style="flex:1;text-align:right;">
-                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;font-family:Rajdhani;">{away}</div>
+                    <div style="color:#e6f1ff;font-size:1rem;font-weight:600;">{away}</div>
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
-
-        b1, b2 = st.columns([7, 1])
-        with b1:
-            if st.button(f"🧠 AI PREDICT", key=f"predict_{sport}_{match_id}_{idx}",
-                         use_container_width=True):
-                st.session_state.selected_match_id   = match_id
-                st.session_state.selected_match_row  = row.to_dict()
+        '''
+        
+        # Display the card with unsafe_allow_html=True
+        st.markdown(card_html, unsafe_allow_html=True)
+        
+        # Buttons row
+        col1, col2 = st.columns([7, 1])
+        with col1:
+            if st.button(f"🧠 AI PREDICT", key=f"predict_{sport}_{match_id}_{idx}", use_container_width=True):
+                st.session_state.selected_match_id = match_id
+                st.session_state.selected_match_row = row.to_dict()
                 st.session_state.selected_match_home = home
                 st.session_state.selected_match_away = away
                 st.session_state.selected_match_sport = sport
                 st.rerun()
-        with b2:
-            if st.button("🔍", key=f"view_{sport}_{match_id}_{idx}"):
-                st.session_state.selected_match_id   = match_id
-                st.session_state.selected_match_row  = row.to_dict()
+        with col2:
+            if st.button(f"🔍", key=f"view_{sport}_{match_id}_{idx}", use_container_width=True):
+                st.session_state.selected_match_id = match_id
+                st.session_state.selected_match_row = row.to_dict()
                 st.session_state.selected_match_home = home
                 st.session_state.selected_match_away = away
                 st.session_state.selected_match_sport = sport
@@ -686,7 +680,7 @@ def render_match_detail():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ARENA
+# ARENA - FIXED VERSION (Proper League Filtering)
 # ══════════════════════════════════════════════════════════════════════════════
 def render_arena(sport: str, league_id: str, status: str):
     if "selected_match_id" in st.session_state:
@@ -710,6 +704,32 @@ def render_arena(sport: str, league_id: str, status: str):
     
     with st.spinner(spinner_msg):
         df = _fetch_matches(sport, league_id, status)
+
+    # FIXED: League filtering - match by LEAGUE name, not LEAGUE_ID
+    if league_id != "ALL" and not df.empty and "LEAGUE" in df.columns:
+        # Get the league name from the selected league_id
+        raw_leagues = data.get_all_leagues(sport)
+        league_name = None
+        for lg in raw_leagues:
+            if str(lg.get("id", "")) == str(league_id):
+                league_name = lg.get("name", "")
+                break
+        
+        if league_name:
+            # Filter by league name (case-insensitive partial match)
+            mask = df["LEAGUE"].astype(str).str.contains(league_name, case=False, na=False)
+            filtered = df[mask]
+            if not filtered.empty:
+                df = filtered
+                st.success(f"✅ Showing matches for: {league_name}")
+            else:
+                st.warning(f"No matches found for {league_name}. Showing all matches.")
+        else:
+            # Fallback: try to match by ID directly
+            mask = df["LEAGUE_ID"].astype(str).str.contains(str(league_id), case=False, na=False)
+            filtered = df[mask]
+            if not filtered.empty:
+                df = filtered
 
     render_match_cards(df, sport)
 
